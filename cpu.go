@@ -18,6 +18,7 @@ type Cpu6502 struct {
 	cycles        byte   // Remaining cycles for current insturction
 	opcode        byte   // Opcode representing next instruction to be executed
 	addrAbs       uint16 // Set by addressing mode functions, used by instructions
+	addrRel       uint16 // Relative displacement address used for branching
 	fetched       byte   // Byte of memory used by CPU instructions
 	isImpliedAddr bool   // Whether the current instruction's address mode is implied
 	cycleCount    uint32 // Total # of cycles executed by the CPU
@@ -39,6 +40,7 @@ func NewCpu6502() *Cpu6502 {
 		cycles:        0,
 		opcode:        0x00,
 		addrAbs:       0x0000,
+		addrRel:       0x0000,
 		fetched:       0x00,
 		isImpliedAddr: false,
 		cycleCount:    0,
@@ -49,7 +51,7 @@ func NewCpu6502() *Cpu6502 {
 	cpu.instLookup = [16 * 16]Instruction{
 		{"BRK", cpu.opBRK, cpu.amIMP, 7}, {"ORA", cpu.opORA, cpu.amIZX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"ORA", cpu.opORA, cpu.amZP0, 3}, {"ASL", cpu.opASL, cpu.amZP0, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"PHP", cpu.opPHP, cpu.amIMP, 3}, {"ORA", cpu.opORA, cpu.amIMM, 2}, {"ASL", cpu.opASL, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"ORA", cpu.opORA, cpu.amABS, 4}, {"ASL", cpu.opASL, cpu.amABS, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
 
-		{"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BPL", cpu.opBPL, cpu.amREL, 2}, {"ORA", cpu.opORA, cpu.amIZY, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"ORA", cpu.opORA, cpu.amZPX, 4}, {"ASL", cpu.opASL, cpu.amZPX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"CLC", cpu.opCLC, cpu.amIMP, 2}, {"ORA", cpu.opORA, cpu.amABY, 4}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"ORA", cpu.opORA, cpu.amABX, 4}, {"ASL", cpu.opASL, cpu.amABX, 7}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
 
 		{"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
 
@@ -234,7 +236,20 @@ func (cpu *Cpu6502) amIMM() byte {
 	return 0x00
 }
 
-func (cpu *Cpu6502) amREL() byte { return 0x00 }
+// Relative:
+func (cpu *Cpu6502) amREL() byte {
+	addr := cpu.read(cpu.Pc)
+	cpu.Pc++
+
+	cpu.addrRel = uint16(addr)
+
+	// Pad left 8 bits if value is negative.
+	if cpu.addrRel > (1 << 7) {
+		cpu.addrRel |= 0xFF00
+	}
+
+	return 0x00
+}
 
 // Zero Page:
 func (cpu *Cpu6502) amZP0() byte {
@@ -247,8 +262,21 @@ func (cpu *Cpu6502) amZP0() byte {
 	return 0x00
 }
 
-func (cpu *Cpu6502) amZPX() byte { return 0x00 }
-func (cpu *Cpu6502) amZPY() byte { return 0x00 }
+// Zero Page, X
+func (cpu *Cpu6502) amZPX() byte {
+	cpu.addrAbs = uint16(cpu.read(cpu.Pc)+cpu.X) & 0x00FF
+	cpu.Pc++
+
+	return 0x00
+}
+
+// Zero Page, Y
+func (cpu *Cpu6502) amZPY() byte {
+	cpu.addrAbs = uint16(cpu.read(cpu.Pc)+cpu.Y) & 0x00FF
+	cpu.Pc++
+
+	return 0x00
+}
 
 // Absolute:
 func (cpu *Cpu6502) amABS() byte {
@@ -265,8 +293,40 @@ func (cpu *Cpu6502) amABS() byte {
 	return 0x00
 }
 
-func (cpu *Cpu6502) amABX() byte { return 0x00 }
-func (cpu *Cpu6502) amABY() byte { return 0x00 }
+// Absolute, X:
+func (cpu *Cpu6502) amABX() byte {
+	// This is the same as absolute addressing, but offsetting by the value in
+	// register X.
+	addr := cpu.readWord(cpu.Pc)
+	cpu.Pc += 2
+
+	cpu.addrAbs = addr + uint16(cpu.X)
+
+	// Add a cycle if page cross occurred.
+	if cpu.addrAbs&0xFF00 != addr&0xFF00 {
+		cpu.cycles++
+	}
+
+	return 0x00
+}
+
+// Absolute, Y:
+func (cpu *Cpu6502) amABY() byte {
+	// This is the same as absolute addressing, but offsetting by the value in
+	// register Y.
+	addr := cpu.readWord(cpu.Pc)
+	cpu.Pc += 2
+
+	cpu.addrAbs = addr + uint16(cpu.Y)
+
+	// Add a cycle if page cross occurred.
+	if cpu.addrAbs&0xFF00 != addr&0xFF00 {
+		cpu.cycles++
+	}
+
+	return 0x00
+}
+
 func (cpu *Cpu6502) amIND() byte { return 0x00 }
 
 // Indexed Indirect:
@@ -288,7 +348,28 @@ func (cpu *Cpu6502) amIZX() byte {
 	return 0x00
 }
 
-func (cpu *Cpu6502) amIZY() byte { return 0x00 }
+// Indirect Indexed:
+func (cpu *Cpu6502) amIZY() byte {
+	// The second byte of the instruction points to a zero page memory location.
+	// The contents of this memory location are added to the contents of
+	// register Y to form the low order byte of the effective address. The carry
+	// from this addition is added to the contents of the next page zero memory
+	// location to form the high order byte of the effective address.
+	location := uint16(cpu.read(cpu.Pc))
+	cpu.Pc++
+
+	lo := cpu.read(location)
+	hi := cpu.read(location + 1)
+
+	cpu.addrAbs = (uint16(hi)<<8 | uint16(lo)) + uint16(cpu.Y)
+
+	// Add a cycle if page cross occurred.
+	if cpu.addrAbs&0xFF00 != (uint16(hi) << 8) {
+		cpu.cycles++
+	}
+
+	return 0x00
+}
 
 ////////////////////////////////////////////////////////////////
 // Instructions
@@ -337,7 +418,25 @@ func (cpu *Cpu6502) opBEQ() byte { return 0x00 }
 func (cpu *Cpu6502) opBIT() byte { return 0x00 }
 func (cpu *Cpu6502) opBMI() byte { return 0x00 }
 func (cpu *Cpu6502) opBNE() byte { return 0x00 }
-func (cpu *Cpu6502) opBPL() byte { return 0x00 }
+
+// BPL - Branch if Positive
+func (cpu *Cpu6502) opBPL() byte {
+	if cpu.getFlag(StatusFlagN) == 0 {
+		// Extra cycle when branch succeeds
+		cpu.cycles++
+
+		cpu.addrAbs = cpu.Pc + cpu.addrRel
+
+		if cpu.addrAbs&0xFF00 != cpu.Pc&0xFF00 {
+			// Extra cycle if cross pages
+			cpu.cycles++
+		}
+
+		cpu.Pc = cpu.addrAbs
+	}
+
+	return 0x00
+}
 
 // BRK - Force Interrupt
 func (cpu *Cpu6502) opBRK() byte {
@@ -361,7 +460,14 @@ func (cpu *Cpu6502) opBRK() byte {
 
 func (cpu *Cpu6502) opBVC() byte { return 0x00 }
 func (cpu *Cpu6502) opBVS() byte { return 0x00 }
-func (cpu *Cpu6502) opCLC() byte { return 0x00 }
+
+// CLC - Clear Carry Flag
+func (cpu *Cpu6502) opCLC() byte {
+	cpu.setFlag(StatusFlagC, false)
+
+	return 0x00
+}
+
 func (cpu *Cpu6502) opCLD() byte { return 0x00 }
 func (cpu *Cpu6502) opCLI() byte { return 0x00 }
 func (cpu *Cpu6502) opCLV() byte { return 0x00 }
