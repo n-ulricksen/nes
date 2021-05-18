@@ -131,3 +131,36 @@ func TestOpORA(t *testing.T) {
 		}
 	}
 }
+
+func TestOpPHP(t *testing.T) {
+	nes := NewBus()
+	cpu := nes.cpu
+
+	// Snapshot
+	flags := cpu.Status
+
+	// Operate
+	cpu.opPHP()
+
+	tests := []struct {
+		got  interface{}
+		want interface{}
+	}{
+		{cpu.getFlag(StatusFlagC), flags & byte(StatusFlagC)}, // unchanged
+		{cpu.getFlag(StatusFlagZ), flags & byte(StatusFlagZ)}, // unchanged
+		{cpu.getFlag(StatusFlagI), flags & byte(StatusFlagI)}, // unchanged
+		{cpu.getFlag(StatusFlagD), flags & byte(StatusFlagD)}, // unchanged
+		{cpu.getFlag(StatusFlagB), flags & byte(StatusFlagB)}, // unchanged
+		{cpu.getFlag(StatusFlagV), flags & byte(StatusFlagV)}, // unchanged
+		{cpu.getFlag(StatusFlagN), flags & byte(StatusFlagN)}, // unchanged
+
+		{cpu.stackPop(), cpu.Status}, // check flags were pushed to stack
+	}
+
+	// Test
+	for _, test := range tests {
+		if test.got != test.want {
+			t.Errorf("got %v, want %v\n", test.got, test.want)
+		}
+	}
+}

@@ -47,7 +47,7 @@ func NewCpu6502() *Cpu6502 {
 	// Create the lookup table containing all the CPU instructions.
 	// Reference: http://archive.6502.org/datasheets/rockwell_r650x_r651x.pdf
 	cpu.instLookup = [16 * 16]Instruction{
-		{"BRK", cpu.opBRK, cpu.amIMP, 7}, {"ORA", cpu.opORA, cpu.amIZX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"ORA", cpu.opORA, cpu.amZP0, 3}, {"ASL", cpu.opASL, cpu.amZP0, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BRK", cpu.opBRK, cpu.amIMP, 7}, {"ORA", cpu.opORA, cpu.amIZX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"ORA", cpu.opORA, cpu.amZP0, 3}, {"ASL", cpu.opASL, cpu.amZP0, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"PHP", cpu.opPHP, cpu.amIMP, 3}, {"ORA", cpu.opORA, cpu.amIMM, 2}, {"ASL", cpu.opASL, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"ORA", cpu.opORA, cpu.amABS, 4}, {"ASL", cpu.opASL, cpu.amABS, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
 
 		{"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
 
@@ -110,6 +110,17 @@ func (cpu *Cpu6502) fetch() {
 	if !cpu.isImpliedAddr {
 		cpu.fetched = cpu.read(cpu.addrAbs)
 	}
+}
+
+// Functions to push and pop from the stack.
+func (cpu *Cpu6502) stackPush(data byte) {
+	cpu.write((stackBase | uint16(cpu.Sp)), data)
+	cpu.Sp--
+}
+
+func (cpu *Cpu6502) stackPop() byte {
+	cpu.Sp++
+	return cpu.read(stackBase | uint16(cpu.Sp))
 }
 
 ////////////////////////////////////////////////////////////////
@@ -214,9 +225,18 @@ func (cpu *Cpu6502) amIMP() byte {
 	return 0x00
 }
 
-func (cpu *Cpu6502) amIMM() byte { return 0x00 }
+// Immediate:
+func (cpu *Cpu6502) amIMM() byte {
+	// The second byte of the instruction contains the operand.
+	cpu.addrAbs = cpu.Pc
+	cpu.Pc++
+
+	return 0x00
+}
+
 func (cpu *Cpu6502) amREL() byte { return 0x00 }
 
+// Zero Page:
 func (cpu *Cpu6502) amZP0() byte {
 	// Use the second byte of the instruction to index into page zero.
 	lo := cpu.read(cpu.Pc)
@@ -229,7 +249,22 @@ func (cpu *Cpu6502) amZP0() byte {
 
 func (cpu *Cpu6502) amZPX() byte { return 0x00 }
 func (cpu *Cpu6502) amZPY() byte { return 0x00 }
-func (cpu *Cpu6502) amABS() byte { return 0x00 }
+
+// Absolute:
+func (cpu *Cpu6502) amABS() byte {
+	// The second byte of the instruction contains the low order byte of the
+	// address. The third byte of the instruction contains the high order byte.
+	lo := cpu.read(cpu.Pc)
+	cpu.Pc++
+
+	hi := cpu.read(cpu.Pc)
+	cpu.Pc++
+
+	cpu.addrAbs = uint16(hi)<<8 | uint16(lo)
+
+	return 0x00
+}
+
 func (cpu *Cpu6502) amABX() byte { return 0x00 }
 func (cpu *Cpu6502) amABY() byte { return 0x00 }
 func (cpu *Cpu6502) amIND() byte { return 0x00 }
@@ -307,16 +342,13 @@ func (cpu *Cpu6502) opBPL() byte { return 0x00 }
 // BRK - Force Interrupt
 func (cpu *Cpu6502) opBRK() byte {
 	// Push the high byte of the program counter to the stack.
-	cpu.write(stackBase+uint16(cpu.Sp), byte((cpu.Pc>>8)&0xFF))
-	cpu.Sp--
+	cpu.stackPush(byte((cpu.Pc >> 8) & 0xFF))
 
 	// Push the low byte of the program counter to the stack.
-	cpu.write(stackBase+uint16(cpu.Sp), byte(cpu.Pc)&0xFF)
-	cpu.Sp--
+	cpu.stackPush(byte(cpu.Pc))
 
 	// Push the CPU status to the stack.
-	cpu.write(stackBase+uint16(cpu.Sp), cpu.Status)
-	cpu.Sp--
+	cpu.stackPush(cpu.Status)
 
 	// Load the IRQ interrupt vector at $FFFE/F to the PC.
 	cpu.Pc = cpu.readWord(irqVectAddr)
@@ -364,7 +396,14 @@ func (cpu *Cpu6502) opORA() byte {
 }
 
 func (cpu *Cpu6502) opPHA() byte { return 0x00 }
-func (cpu *Cpu6502) opPHP() byte { return 0x00 }
+
+// PHP - Push Processor Status
+func (cpu *Cpu6502) opPHP() byte {
+	cpu.stackPush(cpu.Status)
+
+	return 0x00
+}
+
 func (cpu *Cpu6502) opPLA() byte { return 0x00 }
 func (cpu *Cpu6502) opPLP() byte { return 0x00 }
 func (cpu *Cpu6502) opROL() byte { return 0x00 }
