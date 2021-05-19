@@ -22,6 +22,42 @@ func TestAmIZY(t *testing.T) {}
 
 ////////////////////////////////////////////////////////////////
 // Instructions
+func TestOpAND(t *testing.T) {
+	nes := NewBus()
+	cpu := nes.cpu
+
+	// Snapshot
+	flags := cpu.Status
+	before := cpu.A
+
+	// Operate
+	cpu.opAND()
+
+	after := cpu.A
+
+	tests := []struct {
+		got  interface{}
+		want interface{}
+	}{
+		{cpu.getFlag(StatusFlagC), flags & byte(StatusFlagC)}, // unchanged
+		{cpu.getFlag(StatusFlagZ) > 0, cpu.A == 0},            // set if A == 0
+		{cpu.getFlag(StatusFlagI), flags & byte(StatusFlagI)}, // unchanged
+		{cpu.getFlag(StatusFlagD), flags & byte(StatusFlagD)}, // unchanged
+		{cpu.getFlag(StatusFlagB), flags & byte(StatusFlagB)}, // unchanged
+		{cpu.getFlag(StatusFlagV), flags & byte(StatusFlagV)}, // unchanged
+		{cpu.getFlag(StatusFlagN) > 0, cpu.A&(1<<7) > 0},      // set if bit 7 of accumulator is set
+
+		{before & cpu.fetched, after}, // compare logical AND results
+	}
+
+	// Test
+	for _, test := range tests {
+		if test.got != test.want {
+			t.Errorf("got %v, want %v\n", test.got, test.want)
+		}
+	}
+}
+
 func TestOpASL(t *testing.T) {
 	nes := NewBus()
 	cpu := nes.cpu
@@ -144,6 +180,37 @@ func TestOpCLC(t *testing.T) {
 		want interface{}
 	}{
 		{cpu.getFlag(StatusFlagC), byte(0)},                   // set to 0
+		{cpu.getFlag(StatusFlagZ), flags & byte(StatusFlagZ)}, // unchanged
+		{cpu.getFlag(StatusFlagI), flags & byte(StatusFlagI)}, // unchanged
+		{cpu.getFlag(StatusFlagD), flags & byte(StatusFlagD)}, // unchanged
+		{cpu.getFlag(StatusFlagB), flags & byte(StatusFlagB)}, // unchanged
+		{cpu.getFlag(StatusFlagV), flags & byte(StatusFlagV)}, // unchanged
+		{cpu.getFlag(StatusFlagN), flags & byte(StatusFlagN)}, // unchanged
+	}
+
+	// Test
+	for _, test := range tests {
+		if test.got != test.want {
+			t.Errorf("got %v, want %v\n", test.got, test.want)
+		}
+	}
+}
+
+func TestOpJSR(t *testing.T) {
+	nes := NewBus()
+	cpu := nes.cpu
+
+	// Snapshot
+	flags := cpu.Status
+
+	// Operate
+	cpu.opJSR()
+
+	tests := []struct {
+		got  interface{}
+		want interface{}
+	}{
+		{cpu.getFlag(StatusFlagC), flags & byte(StatusFlagC)}, // unchanged
 		{cpu.getFlag(StatusFlagZ), flags & byte(StatusFlagZ)}, // unchanged
 		{cpu.getFlag(StatusFlagI), flags & byte(StatusFlagI)}, // unchanged
 		{cpu.getFlag(StatusFlagD), flags & byte(StatusFlagD)}, // unchanged
