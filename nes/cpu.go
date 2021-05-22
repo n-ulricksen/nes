@@ -359,11 +359,11 @@ func (cpu *Cpu6502) amIZY() byte {
 	// register Y to form the low order byte of the effective address. The carry
 	// from this addition is added to the contents of the next page zero memory
 	// location to form the high order byte of the effective address.
-	addr := uint16(cpu.read(cpu.Pc))
+	addr := uint16(cpu.read(cpu.Pc)) & 0x00FF
 	cpu.Pc++
 
 	lo := cpu.read(addr)
-	hi := cpu.read(addr + 1)
+	hi := cpu.read((addr + 1) & 0x00FF) // Zero page wraparound
 
 	cpu.AddrAbs = (uint16(hi)<<8 | uint16(lo)) + uint16(cpu.Y)
 
