@@ -1058,12 +1058,12 @@ func (cpu *Cpu6502) opSBC() byte {
 	cpu.setFlag(StatusFlagN, (result&(1<<7) > 0))
 
 	// Determine if overflow using MSB from accumulator, memory, and result:
-	// v = (a == m && a != r)
+	// v = (a != m && m == r)
 	a := (cpu.A & (1 << 7))
 	m := (cpu.Fetched & (1 << 7))
 	r := (byte(result) & (1 << 7))
 
-	cpu.setFlag(StatusFlagV, (a == m) && (a != r))
+	cpu.setFlag(StatusFlagV, (a != m) && (m == r))
 
 	cpu.A = byte(result)
 
