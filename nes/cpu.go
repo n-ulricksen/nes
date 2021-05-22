@@ -341,12 +341,12 @@ func (cpu *Cpu6502) amIZX() byte {
 	// order byte. Both memory locations must be in page zero.
 
 	// Get the low order byte of the address.
-	addr := cpu.read(cpu.Pc) + cpu.X
+	addr := (cpu.read(cpu.Pc) + cpu.X) & 0x00FF
 	cpu.Pc++
 
 	// Read effective address from page zero.
 	lo := cpu.read(uint16(addr))
-	hi := cpu.read((uint16(addr) + 1) % 0x0100) // Zero page wraparound
+	hi := cpu.read((uint16(addr) + 1) & 0x00FF) // Zero page wraparound
 	cpu.AddrAbs = uint16(hi)<<8 | uint16(lo)
 
 	return 0x00
