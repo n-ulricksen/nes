@@ -1,7 +1,11 @@
 package nes
 
 import (
+	"bytes"
 	"fmt"
+	"log"
+	"os"
+	"time"
 )
 
 type Cpu6502 struct {
@@ -24,9 +28,15 @@ type Cpu6502 struct {
 	isImpliedAddr bool   // Whether the current instruction's address mode is implied
 
 	InstLookup [16 * 16]Instruction // Instruction operation lookup
+
+	OpDiss string // Dissasembly for the current instruction, used for debug
+
+	Logger *log.Logger // CPU logging
 }
 
-const stackBase uint16 = 0x0100
+const (
+	stackBase uint16 = 0x0100
+)
 
 func NewCpu6502() *Cpu6502 {
 	cpu := &Cpu6502{
@@ -45,6 +55,16 @@ func NewCpu6502() *Cpu6502 {
 		isImpliedAddr: false,
 		CycleCount:    0,
 	}
+
+	// Create log file.
+	now := time.Now()
+	logFile := fmt.Sprintf("./logs/cpu%s.log", now.Format("20060102-150405"))
+	f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE, 0664)
+	if err != nil {
+		log.Fatal("Unable to create CPU log file...\n", err)
+	}
+
+	cpu.Logger = log.New(f, "", 0)
 
 	// Create the lookup table containing all the CPU instructions.
 	// Reference: http://archive.6502.org/datasheets/rockwell_r650x_r651x.pdf
@@ -166,7 +186,7 @@ func (cpu *Cpu6502) Reset() {
 	cpu.A = 0x00
 	cpu.X = 0x00
 	cpu.Y = 0x00
-	cpu.Status = 0x00 | byte(StatusFlagX)
+	cpu.Status = 0x00 | byte(StatusFlagX) | byte(StatusFlagI)
 	cpu.Sp = 0xFD
 
 	// Get the program counter from the reset vector location in RAM.
@@ -175,7 +195,7 @@ func (cpu *Cpu6502) Reset() {
 	// TODO: clear internal variables (absolute/relative addresses, fetched)
 
 	// Spend time on reset
-	cpu.Cycles = 8
+	cpu.Cycles = 7
 }
 
 // Interrupt Request
@@ -189,11 +209,17 @@ func (cpu *Cpu6502) Cycle() {
 		// current program counter.
 		cpu.Opcode = cpu.read(cpu.Pc)
 
+		// Store CPU state for logging.
+		cpuState := fmt.Sprintf("\t\tA:%02X X:%02X Y:%02X P:%02X SP:%02X\tCYC:%d",
+			cpu.A, cpu.X, cpu.Y, cpu.Status, cpu.Sp, cpu.CycleCount)
+		oldpc := cpu.Pc
+
 		// Lookup by opcode the instruction to be executed.
 		inst := cpu.InstLookup[cpu.Opcode]
 
 		fmt.Printf("from %#x fetched %#x: %v\n", cpu.Pc, cpu.Opcode, inst)
 
+		// Increment program counter.
 		cpu.Pc++
 
 		// Set required cycles for instruction execution.
@@ -202,7 +228,16 @@ func (cpu *Cpu6502) Cycle() {
 		// Add any additional cycles needed by either the addressing mode or
 		// instruction.
 		extraCycles1 := inst.AddrMode()
+
+		// Execute the instruction.
 		extraCycles2 := inst.Execute()
+
+		// Log CPU instructions.
+		var buf bytes.Buffer
+		buf.WriteString(fmt.Sprintf("%04X\t%02X - %s ", oldpc, cpu.Opcode, inst.Name))
+		buf.WriteString(cpuState)
+		cpu.Logger.Print(buf.String())
+		cpu.OpDiss = buf.String()
 
 		cpu.Cycles += (extraCycles1 & extraCycles2)
 	}
@@ -522,10 +557,10 @@ func (cpu *Cpu6502) opBIT() byte {
 	cpu.setFlag(StatusFlagZ, result == 0)
 
 	// Set if bit 6 of result is set.
-	cpu.setFlag(StatusFlagV, result&(1<<6) > 0)
+	cpu.setFlag(StatusFlagV, cpu.Fetched&(1<<6) > 0)
 
 	// Set if bit 7 of result is set.
-	cpu.setFlag(StatusFlagV, result&(1<<7) > 0)
+	cpu.setFlag(StatusFlagN, cpu.Fetched&(1<<7) > 0)
 
 	return 0x00
 }
@@ -596,7 +631,8 @@ func (cpu *Cpu6502) opBRK() byte {
 	cpu.stackPush(byte(cpu.Pc))
 
 	// Push the CPU status to the stack.
-	cpu.stackPush(cpu.Status)
+	// Set B flag according to: http://visual6502.org/wiki/index.php?title=6502_BRK_and_B_bit
+	cpu.stackPush(cpu.Status | byte(StatusFlagB))
 
 	// Load the IRQ interrupt vector at $FFFE/F to the PC.
 	cpu.Pc = cpu.readWord(irqVectAddr)
@@ -813,7 +849,17 @@ func (cpu *Cpu6502) opJSR() byte {
 	return 0x00
 }
 
-func (cpu *Cpu6502) opLDA() byte { return 0x00 }
+// LDA - Load Accumulator
+func (cpu *Cpu6502) opLDA() byte {
+	cpu.fetch()
+
+	cpu.A = cpu.Fetched
+
+	cpu.setFlag(StatusFlagZ, cpu.A == 0)         // if A == 0
+	cpu.setFlag(StatusFlagN, (cpu.A&(1<<7) > 0)) // if bit 7 set
+
+	return 0x00
+}
 
 // LDX - Load X Register
 func (cpu *Cpu6502) opLDX() byte {
@@ -882,7 +928,8 @@ func (cpu *Cpu6502) opPHA() byte {
 
 // PHP - Push Processor Status
 func (cpu *Cpu6502) opPHP() byte {
-	cpu.stackPush(cpu.Status)
+	// Set B flag according to: http://visual6502.org/wiki/index.php?title=6502_BRK_and_B_bit
+	cpu.stackPush(cpu.Status | byte(StatusFlagB))
 
 	return 0x00
 }
@@ -900,8 +947,13 @@ func (cpu *Cpu6502) opPLA() byte {
 
 // PLP - Pull Processor Status
 func (cpu *Cpu6502) opPLP() byte {
-	// Load processor status flags from the stack.
+	// Load processor status flags from the stack. B flag should remain unchanged.
+	bFlag := cpu.getFlag(StatusFlagB) > 0
 	cpu.Status = cpu.stackPop()
+	cpu.setFlag(StatusFlagB, bFlag)
+
+	// Always set unused flag.
+	cpu.setFlag(StatusFlagX, true)
 
 	return 0x00
 }
@@ -960,8 +1012,15 @@ func (cpu *Cpu6502) opROR() byte {
 
 // RTI - Return from Interrupt
 func (cpu *Cpu6502) opRTI() byte {
-	// Pull the status flags then the program counter form the stack.
+	// Pull the status flags then the program counter form the stack. B flag should
+	// remain unchanged.
+	bFlag := cpu.getFlag(StatusFlagB) > 0
 	cpu.Status = cpu.stackPop()
+	cpu.Status = cpu.stackPop()
+	cpu.setFlag(StatusFlagB, bFlag)
+
+	// Always set unused flag.
+	cpu.setFlag(StatusFlagX, true)
 
 	lo := cpu.stackPop()
 	hi := cpu.stackPop()
