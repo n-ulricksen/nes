@@ -62,3 +62,35 @@ func (b *Bus) LoadBytes(rom []byte) {
 		b.Ram[romOffset+i] = bte
 	}
 }
+
+func (b *Bus) LoadNestest() {
+	filepath := "./external_tests/nestest/nestest.nes"
+
+	data, err := ioutil.ReadFile(filepath)
+
+	if err != nil {
+		log.Fatalf("Unable to open %v\n%v\n", filepath, err)
+	}
+
+	// Load 0x4000 bytes starting from 0x0010 (NES headers) from the nestest ROM
+	// into addresses 0x8000 & 0xC000.
+	for i := 0; i < 0x4000; i++ {
+		b.Ram[i+0x8000] = data[i+0x10]
+		b.Ram[i+0xC000] = data[i+0x10]
+	}
+
+	// Nestest program entry
+	b.Cpu.Pc = 0xC000
+}
+
+func (b *Bus) UpdateNestestErrors() {
+	errAddr1 := 0x02
+	errAddr2 := 0x03
+
+	if b.Ram[errAddr1] != 0x00 {
+		log.Fatalf("nestest error %#X\n", b.Ram[errAddr1])
+	}
+	if b.Ram[errAddr2] != 0x00 {
+		log.Fatalf("nestest error %#X\n", b.Ram[errAddr2])
+	}
+}
