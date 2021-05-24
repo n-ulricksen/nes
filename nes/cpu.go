@@ -217,7 +217,7 @@ func (cpu *Cpu6502) Cycle() {
 		// Lookup by opcode the instruction to be executed.
 		inst := cpu.InstLookup[cpu.Opcode]
 
-		fmt.Printf("from %#x fetched %#x: %v\n", cpu.Pc, cpu.Opcode, inst)
+		//fmt.Printf("from %#x fetched %#x: %v\n", cpu.Pc, cpu.Opcode, inst)
 
 		// Increment program counter.
 		cpu.Pc++
@@ -358,12 +358,23 @@ func (cpu *Cpu6502) amABY() byte {
 }
 
 // Indirect:
+// This addressing mode contains a hardware bug. If the low byte of the address
+// read from PC is 0xFF, a page cross should occur. This bug causes the CPU to
+// always wraparound the address, resulting in an invalid effective address.
 func (cpu *Cpu6502) amIND() byte {
 	// The next 16 bits contain a memory address pointing to the effective address.
 	addr := cpu.readWord(cpu.Pc)
 	cpu.Pc += 2
 
-	cpu.AddrAbs = cpu.readWord(addr)
+	if byte(addr) == 0xFF {
+		// Hardware bug.
+		lo := cpu.read(addr)
+		hi := cpu.read(addr & 0xFF00) // Same page, 0th byte.
+		cpu.AddrAbs = uint16(hi)<<8 | uint16(lo)
+	} else {
+		// Expected behavior.
+		cpu.AddrAbs = cpu.readWord(addr)
+	}
 
 	return 0x00
 }
@@ -445,7 +456,7 @@ func (cpu *Cpu6502) opADC() byte {
 
 	cpu.A = byte(result)
 
-	return 0x00
+	return 0x01 // Potential for extra cycle
 }
 
 // AND - Logical AND
@@ -459,7 +470,7 @@ func (cpu *Cpu6502) opAND() byte {
 	// Set if bit 7 of result is set.
 	cpu.setFlag(StatusFlagN, cpu.A&(1<<7) > 0)
 
-	return 0x00
+	return 0x01
 }
 
 // ASL - Arithmetic Shift Left
@@ -713,7 +724,7 @@ func (cpu *Cpu6502) opCMP() byte {
 	cpu.setFlag(StatusFlagZ, cpu.A == cpu.Fetched)
 	cpu.setFlag(StatusFlagN, ((cpu.A-cpu.Fetched)&(1<<7) > 0)) // if bit 7 set
 
-	return 0x00
+	return 0x01
 }
 
 // CPX - Compare X Register
@@ -787,7 +798,7 @@ func (cpu *Cpu6502) opEOR() byte {
 	// Set negative flag if bit 7 is set.
 	cpu.setFlag(StatusFlagN, cpu.A&(1<<7) > 0)
 
-	return 0x00
+	return 0x01
 }
 
 // INC - Increment Memory
@@ -858,7 +869,7 @@ func (cpu *Cpu6502) opLDA() byte {
 	cpu.setFlag(StatusFlagZ, cpu.A == 0)         // if A == 0
 	cpu.setFlag(StatusFlagN, (cpu.A&(1<<7) > 0)) // if bit 7 set
 
-	return 0x00
+	return 0x01
 }
 
 // LDX - Load X Register
@@ -870,7 +881,7 @@ func (cpu *Cpu6502) opLDX() byte {
 	cpu.setFlag(StatusFlagZ, cpu.X == 0)         // if X == 0
 	cpu.setFlag(StatusFlagN, (cpu.X&(1<<7) > 0)) // if bit 7 set
 
-	return 0x00
+	return 0x01
 }
 
 // LDY - Load Y Register
@@ -882,7 +893,7 @@ func (cpu *Cpu6502) opLDY() byte {
 	cpu.setFlag(StatusFlagZ, cpu.Y == 0)         // if Y == 0
 	cpu.setFlag(StatusFlagN, (cpu.Y&(1<<7) > 0)) // if bit 7 set
 
-	return 0x00
+	return 0x01
 }
 
 // LSR - Logical Shift Right
@@ -918,7 +929,7 @@ func (cpu *Cpu6502) opORA() byte {
 	cpu.setFlag(StatusFlagZ, cpu.A == 0)         // if A == 0
 	cpu.setFlag(StatusFlagN, (cpu.A&(1<<7) > 0)) // if bit 7 set
 
-	return 0x00
+	return 0x01
 }
 
 // PHA - Push Accumulator
@@ -1070,7 +1081,7 @@ func (cpu *Cpu6502) opSBC() byte {
 
 	cpu.A = byte(result)
 
-	return 0x00
+	return 0x01
 }
 
 // SEC - Set Carry Flag
