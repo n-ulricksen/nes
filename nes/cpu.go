@@ -1020,7 +1020,6 @@ func (cpu *Cpu6502) opRTI() byte {
 	// remain unchanged.
 	bFlag := cpu.getFlag(StatusFlagB) > 0
 	cpu.Status = cpu.stackPop()
-	cpu.Status = cpu.stackPop()
 	cpu.setFlag(StatusFlagB, bFlag)
 
 	// Always set unused flag.
