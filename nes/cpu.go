@@ -899,6 +899,7 @@ func (cpu *Cpu6502) opLSR() byte {
 	cpu.Fetched = cpu.Fetched >> 1
 
 	cpu.setFlag(StatusFlagZ, cpu.Fetched == 0)
+	cpu.setFlag(StatusFlagN, (cpu.Fetched&(1<<7) > 0)) // if bit 7 set
 
 	if cpu.isImpliedAddr {
 		cpu.A = cpu.Fetched
