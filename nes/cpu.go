@@ -837,6 +837,10 @@ func (cpu *Cpu6502) opJMP() byte {
 
 // JSR - Jump to Subroutine
 func (cpu *Cpu6502) opJSR() byte {
+	// Push the address (minus 1) of the return point to the stack, and sets
+	// the program counter to the target memory address.
+	cpu.Pc--
+
 	// Push the high byte of the program counter to the stack.
 	cpu.stackPush(byte((cpu.Pc >> 8) & 0xFF))
 
@@ -1037,6 +1041,9 @@ func (cpu *Cpu6502) opRTS() byte {
 	hi := cpu.stackPop()
 
 	cpu.Pc = uint16(hi)<<8 | uint16(lo)
+
+	// Increment PC (JSR decrements it)
+	cpu.Pc++
 
 	return 0x00
 }
