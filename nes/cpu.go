@@ -456,10 +456,8 @@ func (cpu *Cpu6502) opAND() byte {
 
 	cpu.setFlag(StatusFlagZ, cpu.A == 0)
 
-	// Set negative flag if bit 7 of result is set.
-	if cpu.A&(1<<7) > 0 {
-		cpu.setFlag(StatusFlagN, true)
-	}
+	// Set if bit 7 of result is set.
+	cpu.setFlag(StatusFlagN, cpu.A&(1<<7) > 0)
 
 	return 0x00
 }
@@ -483,10 +481,8 @@ func (cpu *Cpu6502) opASL() byte {
 
 	cpu.setFlag(StatusFlagZ, cpu.A == 0)
 
-	// Set negative flag if bit 7 of result is set.
-	if result&(1<<7) > 0 {
-		cpu.setFlag(StatusFlagN, true)
-	}
+	// Set if bit 7 of result is set.
+	cpu.setFlag(StatusFlagN, result&(1<<7) > 0)
 
 	return 0x00
 }
