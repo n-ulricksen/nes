@@ -112,7 +112,7 @@ func (b *Bus) LoadNestest() {
 	b.Cpu.Pc = 0xC000
 }
 
-func (b *Bus) UpdateNestestErrors() {
+func (b *Bus) CheckForNestestErrors() {
 	errAddr1 := 0x02
 	errAddr2 := 0x03
 

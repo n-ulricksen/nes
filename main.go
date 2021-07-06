@@ -47,7 +47,7 @@ func startDebugMode(nesEmu *nes.Bus) {
 					nesEmu.Cpu.Cycle()
 				}
 				cycles = 0
-				nesEmu.UpdateNestestErrors()
+				nesEmu.CheckForNestestErrors()
 			}
 		}
 	}(nesEmu, cycleChan)
