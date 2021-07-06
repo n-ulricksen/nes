@@ -6,8 +6,12 @@ import (
 )
 
 type Bus struct {
-	Cpu *Cpu6502
-	Ram [64 * 1024]byte // 64kb RAM used for initial development.
+	Cpu  *Cpu6502
+	Ppu  *Ppu
+	Ram  [64 * 1024]byte // 64kb RAM used for initial development.
+	Cart *Cartridge
+
+	ClockCount int
 }
 
 func NewBus() *Bus {
@@ -26,17 +30,42 @@ func NewBus() *Bus {
 	return bus
 }
 
-func (b *Bus) Read(addr uint16) byte {
-	if addr >= 0x0000 && addr <= 0xFFFF {
-		return b.Ram[addr]
+func (b *Bus) CpuRead(addr uint16) byte {
+	var data byte
+
+	if addr >= 0x0000 && addr <= 0x1FFF {
+		data = b.Ram[addr&0x07FF] // Mirror every 2kb
+	} else if addr >= 0x2000 && addr <= 0x3FFF {
+		data = b.Ppu.cpuRead(addr & 0x0007)
 	}
-	return 0x00
+
+	return data
 }
 
-func (b *Bus) Write(addr uint16, data byte) {
-	if addr >= 0x0000 && addr <= 0xFFFF {
-		b.Ram[addr] = data
+func (b *Bus) CpuWrite(addr uint16, data byte) {
+	if addr >= 0x0000 && addr <= 0x1FFF {
+		b.Ram[addr&0x07FF] = data // Mirror every 2kb
+	} else if addr >= 0x2000 && addr <= 0x3FFF {
+		b.Ppu.cpuWrite(addr&0x0007, data)
 	}
+}
+
+// Load a cartridge to the NES. The cartridge is connected to both the CPU and PPU.
+func (b *Bus) InsertCartridge(cart *Cartridge) {
+	b.Cart = cart
+	b.Ppu.ConnectCartridge(cart)
+}
+
+// Reset the NES.
+func (b *Bus) Reset() {
+	b.Cpu.Reset()
+
+	b.ClockCount = 0
+}
+
+// 1 NES clock cycle.
+func (b *Bus) Clock() {
+	b.ClockCount++
 }
 
 // Load a ROM to the NES.

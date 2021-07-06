@@ -40,14 +40,14 @@ func startDebugMode(nesEmu *nes.Bus) {
 			select {
 			case <-cycleChan:
 				if cycles == 0 {
-					cycles = int(nesEmu.Cpu.InstLookup[nesEmu.Read(nesEmu.Cpu.Pc)].Cycles)
+					cycles = int(nesEmu.Cpu.InstLookup[nesEmu.CpuRead(nesEmu.Cpu.Pc)].Cycles)
 				}
 
 				for i := 0; i < cycles; i++ {
 					nesEmu.Cpu.Cycle()
 				}
 				cycles = 0
-				//nesEmulator.UpdateNestestErrors()
+				nesEmu.UpdateNestestErrors()
 			}
 		}
 	}(nesEmu, cycleChan)

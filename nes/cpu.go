@@ -110,12 +110,12 @@ func (cpu *Cpu6502) ConnectBus(b *Bus) { cpu.bus = b }
 
 // Read from the attached bus.
 func (cpu *Cpu6502) read(addr uint16) byte {
-	return cpu.bus.Read(addr)
+	return cpu.bus.CpuRead(addr)
 }
 
 // Write to the attached bus.
 func (cpu *Cpu6502) write(addr uint16, data byte) {
-	cpu.bus.Write(addr, data)
+	cpu.bus.CpuWrite(addr, data)
 }
 
 // Read a word from memory (little endian order).
