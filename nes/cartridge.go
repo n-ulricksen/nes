@@ -1,5 +1,6 @@
 package nes
 
+// NES Cartridge. Connected to both main bus and PPU bus.
 type Cartridge struct{}
 
 // Communicate with main (CPU) bus.
