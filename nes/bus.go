@@ -5,14 +5,27 @@ import (
 	"log"
 )
 
+// Main bus used by the CPU.
 type Bus struct {
-	Cpu  *Cpu6502
-	Ppu  *Ppu
+	Cpu  *Cpu6502        // NES CPU.
+	Ppu  *Ppu            // Picture processing unit.
 	Ram  [64 * 1024]byte // 64kb RAM used for initial development.
-	Cart *Cartridge
+	Cart *Cartridge      // NES Cartridge.
 
 	ClockCount int
 }
+
+const (
+	// RAM
+	minRamAddr uint16 = 0x0000
+	maxRamAddr uint16 = 0x1FFF
+	ramMirror  uint16 = 0x07FF // mirror every 2KB.
+
+	// PPU registers
+	minPpuAddr uint16 = 0x2000
+	maxPpuAddr uint16 = 0x3FFF
+	ppuMirror  uint16 = 0x0008 // mirror every 8 bytes.
+)
 
 func NewBus() *Bus {
 	// Create a new CPU. Here we use a 6502.
@@ -21,7 +34,7 @@ func NewBus() *Bus {
 	// Attach devices to the bus.
 	bus := &Bus{
 		Cpu: cpu,
-		Ram: [64 * 1024]byte{},
+		Ram: [64 * 1024]byte{}, // fake RAM for now...
 	}
 
 	// Connect this bus to the cpu.
@@ -30,23 +43,25 @@ func NewBus() *Bus {
 	return bus
 }
 
+// Used by the CPU to read data from the main bus at a specified address.
 func (b *Bus) CpuRead(addr uint16) byte {
 	var data byte
 
-	if addr >= 0x0000 && addr <= 0x1FFF {
-		data = b.Ram[addr&0x07FF] // Mirror every 2kb
-	} else if addr >= 0x2000 && addr <= 0x3FFF {
-		data = b.Ppu.cpuRead(addr & 0x0007)
+	if addr >= minRamAddr && addr <= maxRamAddr {
+		data = b.Ram[addr&ramMirror]
+	} else if addr >= minPpuAddr && addr <= maxPpuAddr {
+		data = b.Ppu.cpuRead(addr & ppuMirror)
 	}
 
 	return data
 }
 
+// Used by the CPU to write data to the main bus at a specified address.
 func (b *Bus) CpuWrite(addr uint16, data byte) {
-	if addr >= 0x0000 && addr <= 0x1FFF {
-		b.Ram[addr&0x07FF] = data // Mirror every 2kb
-	} else if addr >= 0x2000 && addr <= 0x3FFF {
-		b.Ppu.cpuWrite(addr&0x0007, data)
+	if addr >= minRamAddr && addr <= maxRamAddr {
+		b.Ram[addr&ramMirror] = data
+	} else if addr >= minPpuAddr && addr <= maxPpuAddr {
+		b.Ppu.cpuWrite(addr&ppuMirror, data)
 	}
 }
 
@@ -112,6 +127,7 @@ func (b *Bus) LoadNestest() {
 	b.Cpu.Pc = 0xC000
 }
 
+// Used for testing the emulator with nestest.
 func (b *Bus) CheckForNestestErrors() {
 	errAddr1 := 0x02
 	errAddr2 := 0x03
