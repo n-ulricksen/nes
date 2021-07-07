@@ -16,7 +16,7 @@ func (p *Ppu) ConnectCartridge(c *Cartridge) {
 
 func (p *Ppu) clock() {}
 
-// Communicate with main (CPU) bus.
+// Communicate with main (CPU) bus - used for PPU register access.
 func (p *Ppu) cpuRead(addr uint16) byte {
 	var data byte
 
