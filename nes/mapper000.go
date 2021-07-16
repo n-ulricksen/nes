@@ -8,7 +8,7 @@ type Mapper000 struct {
 func NewMapper000(prgRomChunks, chrRomChunks byte) *Mapper000 {
 	return &Mapper000{
 		PrgBanks: prgRomChunks,
-		ChrBanks: prgRomChunks,
+		ChrBanks: chrRomChunks,
 	}
 }
 
@@ -29,7 +29,6 @@ func (m *Mapper000) cpuMapRead(addr uint16, mappedAddr *uint16) bool {
 			addr &= 0x7FFF // 32KB ROM
 		}
 		*mappedAddr = addr
-
 		return true
 	}
 
@@ -44,7 +43,6 @@ func (m *Mapper000) cpuMapWrite(addr uint16, mappedAddr *uint16) bool {
 			addr &= 0x7FFF // 32KB ROM
 		}
 		*mappedAddr = addr
-
 		return true
 	}
 
