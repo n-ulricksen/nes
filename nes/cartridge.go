@@ -13,6 +13,8 @@ import (
 type Cartridge struct {
 	prgMem []byte // Program memory (PRG)
 	chrMem []byte // Character memory (CHR)
+
+	mapper Mapper // Cartridge mapper used to configure CPU/PPU read/write addresses.
 }
 
 // iNES file header
@@ -57,15 +59,24 @@ func NewCartridge(filepath string) *Cartridge {
 		}
 	}
 
+	// TODO: determine iNES version (0/1/2)
+
+	cartridge := new(Cartridge)
+
 	// Determine mapper ID from high 4 bits of mapper flags.
 	mapperLo := header.Mapper1 >> 4
 	mapperHi := header.Mapper2 >> 4
 	mapperId := (mapperHi << 4) | mapperLo
+
+	// Set Mapper
+	var mapper Mapper
+	switch mapperId {
+	case 0:
+		mapper = NewMapper000(header.PrgRomChunks, header.ChrRomChunks)
+	}
+	cartridge.mapper = mapper
 	fmt.Println("Mapper ID:", mapperId)
-
-	// TODO: determine iNES version (0/1/2)
-
-	cartridge := new(Cartridge)
+	fmt.Println("Mapper:", mapper)
 
 	// Read/load PRG memory (16KB chunks).
 	cartridge.prgMem = make([]byte, 16*1024*int(header.PrgRomChunks))
@@ -97,9 +108,43 @@ func NewCartridge(filepath string) *Cartridge {
 }
 
 // Communicate with main (CPU) bus.
-func (c *Cartridge) cpuRead(addr uint16, data *byte) bool { return false }
-func (c *Cartridge) cpuWrite(addr uint16, data byte) bool { return false }
+func (c *Cartridge) cpuRead(addr uint16, data *byte) bool {
+	var mappedAddr uint16
+	if c.mapper.cpuMapRead(addr, &mappedAddr) {
+		*data = c.prgMem[mappedAddr]
+		return true
+	}
+
+	return false
+}
+
+func (c *Cartridge) cpuWrite(addr uint16, data byte) bool {
+	var mappedAddr uint16
+	if c.mapper.cpuMapWrite(addr, &mappedAddr) {
+		c.prgMem[mappedAddr] = data
+		return true
+	}
+
+	return false
+}
 
 // Communicate with PPU bus.
-func (c *Cartridge) ppuRead(addr uint16, data *byte) bool { return false }
-func (c *Cartridge) ppuWrite(addr uint16, data byte) bool { return false }
+func (c *Cartridge) ppuRead(addr uint16, data *byte) bool {
+	var mappedAddr uint16
+	if c.mapper.ppuMapRead(addr, &mappedAddr) {
+		*data = c.chrMem[mappedAddr]
+		return true
+	}
+
+	return false
+}
+
+func (c *Cartridge) ppuWrite(addr uint16, data byte) bool {
+	var mappedAddr uint16
+	if c.mapper.ppuMapRead(addr, &mappedAddr) {
+		c.chrMem[mappedAddr] = data
+		return true
+	}
+
+	return false
+}
