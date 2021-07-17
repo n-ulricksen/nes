@@ -179,9 +179,6 @@ const resetVectAddr = 0xFFFC
 const irqVectAddr = 0xFFFE
 
 func (cpu *Cpu6502) Reset() {
-	// TODO: set the program counter to the absolute address read from location
-	// 0xFFFC.
-
 	// Clear registers, reset stack pointer
 	cpu.A = 0x00
 	cpu.X = 0x00
@@ -192,7 +189,13 @@ func (cpu *Cpu6502) Reset() {
 	// Get the program counter from the reset vector location in RAM.
 	cpu.Pc = cpu.readWord(resetVectAddr)
 
-	// TODO: clear internal variables (absolute/relative addresses, fetched)
+	// Clear internal variables.
+	cpu.Opcode = 0x00
+	cpu.AddrAbs = 0x0000
+	cpu.AddrRel = 0x0000
+	cpu.Fetched = 0x00
+	cpu.isImpliedAddr = false
+	cpu.CycleCount = 0
 
 	// Spend time on reset
 	cpu.Cycles = 7
@@ -203,7 +206,7 @@ func (cpu *Cpu6502) IRQ() {}
 func (cpu *Cpu6502) NMI() {}
 
 // Cycle represents one CPU clock cycle.
-func (cpu *Cpu6502) Cycle() {
+func (cpu *Cpu6502) Clock() {
 	if cpu.Cycles == 0 {
 		// Get the next opcode by reading from the bus at the location of the
 		// current program counter.
