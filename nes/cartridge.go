@@ -74,6 +74,9 @@ func NewCartridge(filepath string) *Cartridge {
 	case 0:
 		mapper = NewMapper000(header.PrgRomChunks, header.ChrRomChunks)
 	}
+	if mapper == nil {
+		log.Fatal("No suitable mapper found for this ROM file.")
+	}
 	cartridge.mapper = mapper
 	fmt.Println("Mapper ID:", mapperId)
 	fmt.Println("Mapper:", mapper)
@@ -108,43 +111,25 @@ func NewCartridge(filepath string) *Cartridge {
 }
 
 // Communicate with main (CPU) bus.
-func (c *Cartridge) cpuRead(addr uint16, data *byte) bool {
-	var mappedAddr uint16
-	if c.mapper.cpuMapRead(addr, &mappedAddr) {
-		*data = c.prgMem[mappedAddr]
-		return true
-	}
+func (c *Cartridge) cpuRead(addr uint16) byte {
+	mappedAddr := c.mapper.cpuMapRead(addr)
 
-	return false
+	return c.prgMem[mappedAddr]
 }
 
-func (c *Cartridge) cpuWrite(addr uint16, data byte) bool {
-	var mappedAddr uint16
-	if c.mapper.cpuMapWrite(addr, &mappedAddr) {
-		c.prgMem[mappedAddr] = data
-		return true
-	}
-
-	return false
+func (c *Cartridge) cpuWrite(addr uint16, data byte) {
+	mappedAddr := c.mapper.cpuMapWrite(addr)
+	c.prgMem[mappedAddr] = data
 }
 
 // Communicate with PPU bus.
-func (c *Cartridge) ppuRead(addr uint16, data *byte) bool {
-	var mappedAddr uint16
-	if c.mapper.ppuMapRead(addr, &mappedAddr) {
-		*data = c.chrMem[mappedAddr]
-		return true
-	}
+func (c *Cartridge) ppuRead(addr uint16) byte {
+	mappedAddr := c.mapper.ppuMapRead(addr)
 
-	return false
+	return c.chrMem[mappedAddr]
 }
 
-func (c *Cartridge) ppuWrite(addr uint16, data byte) bool {
-	var mappedAddr uint16
-	if c.mapper.ppuMapRead(addr, &mappedAddr) {
-		c.chrMem[mappedAddr] = data
-		return true
-	}
-
-	return false
+func (c *Cartridge) ppuWrite(addr uint16, data byte) {
+	mappedAddr := c.mapper.ppuMapWrite(addr)
+	c.chrMem[mappedAddr] = data
 }

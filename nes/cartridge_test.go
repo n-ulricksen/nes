@@ -1,13 +1,12 @@
 package nes
 
 import (
-	"fmt"
 	"testing"
 )
 
-const testRom = "../roms/LegendOfZelda.nes"
+//const testRom = "../roms/LegendOfZelda.nes"
+const testRom = "../roms/DK.nes"
 
 func TestNewCartridge(t *testing.T) {
-	cart := NewCartridge(testRom)
-	fmt.Println(cart)
+	_ = NewCartridge(testRom)
 }

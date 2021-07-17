@@ -5,8 +5,8 @@ type Mapper000 struct {
 	ChrBanks byte
 }
 
-func NewMapper000(prgRomChunks, chrRomChunks byte) *Mapper000 {
-	return &Mapper000{
+func NewMapper000(prgRomChunks, chrRomChunks byte) Mapper000 {
+	return Mapper000{
 		PrgBanks: prgRomChunks,
 		ChrBanks: chrRomChunks,
 	}
@@ -21,49 +21,41 @@ func NewMapper000(prgRomChunks, chrRomChunks byte) *Mapper000 {
 // if 32KB ROM size:
 //   0x8000-0xFFFF -> 0x0000-0x7FFF
 
-func (m *Mapper000) cpuMapRead(addr uint16, mappedAddr *uint16) bool {
+func (m Mapper000) cpuMapRead(addr uint16) uint16 {
 	if addr >= 0x8000 && addr <= 0xFFFF {
 		if m.PrgBanks > 1 {
-			addr &= 0x3FFF // 16KB ROM, need to mirror
-		} else {
 			addr &= 0x7FFF // 32KB ROM
+		} else {
+			addr &= 0x3FFF // 16KB ROM, need to mirror
 		}
-		*mappedAddr = addr
-		return true
 	}
 
-	return false
+	return addr
 }
 
-func (m *Mapper000) cpuMapWrite(addr uint16, mappedAddr *uint16) bool {
+func (m Mapper000) cpuMapWrite(addr uint16) uint16 {
 	if addr >= 0x8000 && addr <= 0xFFFF {
 		if m.PrgBanks > 1 {
 			addr &= 0x3FFF // 16KB ROM, need to mirror
 		} else {
 			addr &= 0x7FFF // 32KB ROM
 		}
-		*mappedAddr = addr
-		return true
 	}
 
-	return false
+	return addr
 }
 
 // No PPU mapping
-func (m *Mapper000) ppuMapRead(addr uint16, mappedAddr *uint16) bool {
+func (m Mapper000) ppuMapRead(addr uint16) uint16 {
 	if addr >= 0x0000 && addr <= 0x1FFF {
-		*mappedAddr = addr
-		return true
 	}
 
-	return false
+	return addr
 }
 
-func (m *Mapper000) ppuMapWrite(addr uint16, mappedAddr *uint16) bool {
+func (m Mapper000) ppuMapWrite(addr uint16) uint16 {
 	if addr >= 0x0000 && addr <= 0x1FFF {
-		*mappedAddr = addr
-		return true
 	}
 
-	return false
+	return addr
 }

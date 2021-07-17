@@ -17,23 +17,28 @@ type Bus struct {
 
 const (
 	// RAM
-	minRamAddr uint16 = 0x0000
-	maxRamAddr uint16 = 0x1FFF
+	ramMinAddr uint16 = 0x0000
+	ramMaxAddr uint16 = 0x1FFF
 	ramMirror  uint16 = 0x07FF // mirror every 2KB.
 
-	// PPU registers
-	minPpuAddr uint16 = 0x2000
-	maxPpuAddr uint16 = 0x3FFF
-	ppuMirror  uint16 = 0x0008 // mirror every 8 bytes.
+	// PPU
+	ppuMinAddr uint16 = 0x2000
+	ppuMaxAddr uint16 = 0x3FFF
+	ppuMirror  uint16 = 0x0007 // mirror every 8 bytes.
+
+	// Cartridge
+	cartMinAddr uint16 = 0x4020
+	cartMaxAddr uint16 = 0xFFFF
 )
 
-func NewBus() *Bus {
+func NewBus(display *PpuDisplay) *Bus {
 	// Create a new CPU. Here we use a 6502.
 	cpu := NewCpu6502()
 
 	// Attach devices to the bus.
 	bus := &Bus{
 		Cpu: cpu,
+		Ppu: NewPpu(display),
 		Ram: [64 * 1024]byte{}, // fake RAM for now...
 	}
 
@@ -47,10 +52,12 @@ func NewBus() *Bus {
 func (b *Bus) CpuRead(addr uint16) byte {
 	var data byte
 
-	if addr >= minRamAddr && addr <= maxRamAddr {
+	if addr >= ramMinAddr && addr <= ramMaxAddr {
 		data = b.Ram[addr&ramMirror]
-	} else if addr >= minPpuAddr && addr <= maxPpuAddr {
+	} else if addr >= ppuMinAddr && addr <= ppuMaxAddr {
 		data = b.Ppu.cpuRead(addr & ppuMirror)
+	} else if addr >= cartMinAddr && addr <= cartMaxAddr {
+		data = b.Cart.cpuRead(addr)
 	}
 
 	return data
@@ -58,11 +65,14 @@ func (b *Bus) CpuRead(addr uint16) byte {
 
 // Used by the CPU to write data to the main bus at a specified address.
 func (b *Bus) CpuWrite(addr uint16, data byte) {
-	if addr >= minRamAddr && addr <= maxRamAddr {
+	if addr >= ramMinAddr && addr <= ramMaxAddr {
 		b.Ram[addr&ramMirror] = data
-	} else if addr >= minPpuAddr && addr <= maxPpuAddr {
+	} else if addr >= ppuMinAddr && addr <= ppuMaxAddr {
 		b.Ppu.cpuWrite(addr&ppuMirror, data)
+	} else if addr >= cartMinAddr && addr <= cartMaxAddr {
+		b.Cart.cpuWrite(addr, data)
 	}
+
 }
 
 // Load a cartridge to the NES. The cartridge is connected to both the CPU and PPU.
@@ -80,6 +90,13 @@ func (b *Bus) Reset() {
 
 // 1 NES clock cycle.
 func (b *Bus) Clock() {
+	b.Ppu.Clock()
+
+	// CPU runs 3 times slower than PPU.
+	if b.ClockCount%3 == 0 {
+		b.Cpu.Clock()
+	}
+
 	b.ClockCount++
 }
 
