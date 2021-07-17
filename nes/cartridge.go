@@ -47,7 +47,7 @@ func NewCartridge(filepath string) *Cartridge {
 	if err != nil {
 		log.Fatalf("Unable to parse header\n%v\n", err)
 	}
-	fmt.Printf("Parsed cartridge header: %+v\n\n", header)
+	fmt.Printf("Parsed cartridge header: %+v\n", header)
 
 	// Check if trainer is used (bit 3 of mapper1 flags).
 	if (header.Mapper1 & (0x1 << 3)) > 0 {
@@ -104,7 +104,7 @@ func NewCartridge(filepath string) *Cartridge {
 		}
 	}
 
-	return nil
+	return cartridge
 }
 
 // Communicate with main (CPU) bus.
