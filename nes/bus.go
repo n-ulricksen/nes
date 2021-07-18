@@ -1,8 +1,10 @@
 package nes
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
+	"time"
 )
 
 // Main bus used by the CPU.
@@ -31,14 +33,14 @@ const (
 	cartMaxAddr uint16 = 0xFFFF
 )
 
-func NewBus(display *PpuDisplay) *Bus {
+func NewBus() *Bus {
 	// Create a new CPU. Here we use a 6502.
 	cpu := NewCpu6502()
 
 	// Attach devices to the bus.
 	bus := &Bus{
 		Cpu: cpu,
-		Ppu: NewPpu(display),
+		Ppu: NewPpu(),
 		Ram: [64 * 1024]byte{}, // fake RAM for now...
 	}
 
@@ -46,6 +48,30 @@ func NewBus(display *PpuDisplay) *Bus {
 	cpu.ConnectBus(bus)
 
 	return bus
+}
+
+func (b *Bus) Run() {
+	// Create a PixelGL display for the PPU to render to.
+	b.Ppu.display = NewDisplay()
+
+	intervalInMilli := (float64(1.0) / float64(30.0)) * 1000
+	interval := time.Duration(intervalInMilli) * time.Millisecond
+	fmt.Println(interval)
+
+	ticker := time.NewTicker(interval)
+
+	// XXX: run fast fast fast for now
+	for {
+		for !b.Ppu.frameComplete {
+			b.Clock()
+		}
+
+		<-ticker.C
+		ticker.Reset(interval)
+
+		// Prepare for new frame
+		b.Ppu.frameComplete = false
+	}
 }
 
 // Used by the CPU to read data from the main bus at a specified address.
