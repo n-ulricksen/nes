@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+const (
+	paletteSize = 0x40
+)
+
 // References:
 // http://wiki.nesdev.com/w/index.php/PPU_registers
 // https://www.youtube.com/watch?v=xdzOvpYPmGE (javidx9)
@@ -24,6 +28,8 @@ type Ppu struct {
 	frameComplete bool // Whether or not the current frame is finished rendering
 
 	display *Display
+
+	paletteRGBA [paletteSize]color.RGBA
 }
 
 func NewPpu() *Ppu {
@@ -34,6 +40,8 @@ func NewPpu() *Ppu {
 		scanline:      0,
 		cycle:         0,
 		frameComplete: true,
+
+		paletteRGBA: LoadPalette("./palettes/ntscpalette.pal"),
 	}
 }
 
@@ -46,24 +54,26 @@ func (p *Ppu) ConnectCartridge(c *Cartridge) {
 	p.Cart = c
 }
 
-// XXX: need to put this data somewhere
-func (p *Ppu) LoadPalette(filepath string) {
+// LoadPalette loads an NES palette from the specified file path, and returns
+// and array of RGBA colors.
+func LoadPalette(filepath string) [paletteSize]color.RGBA {
 	data, err := ioutil.ReadFile(filepath)
 	if err != nil {
 		log.Fatal("Unable to open palette file.\n", err)
 	}
 
-	fmt.Println("Palette data:")
-	for i, b := range data {
-		if i%3 == 0 {
-			fmt.Print(" ")
-		}
-		if i%(3*0x10) == 0 {
-			fmt.Print("\n\n")
-		}
-		fmt.Printf("%d ", b)
+	palette := [paletteSize]color.RGBA{}
+
+	for i := 0; i < len(data); i += 3 {
+		r := data[i]
+		g := data[i+1]
+		b := data[i+2]
+		palette[i/3] = color.RGBA{r, g, b, 255}
 	}
-	fmt.Println()
+	fmt.Println("Palette data:")
+	fmt.Println(palette)
+
+	return palette
 }
 
 // PPU clock cycle.
@@ -72,9 +82,9 @@ func (p *Ppu) LoadPalette(filepath string) {
 func (p *Ppu) Clock() {
 	p.cycle++
 
-	// Draw static to the screen for now (random black or white pixel)
-	r := uint8(rand.Intn(2)) * 255
-	p.display.DrawPixel(p.cycle-1, p.scanline, color.RGBA{r, r, r, 255})
+	// Draw static to the screen for now (random color pixel)
+	i := uint8(rand.Intn(0x40))
+	p.display.DrawPixel(p.cycle-1, p.scanline, p.paletteRGBA[i])
 
 	if p.cycle >= 341 {
 		p.cycle = 0
