@@ -90,7 +90,7 @@ func (d *Display) updateGameDisplay() {
 
 func (d *Display) updateDebugDisplay() {
 	sprite := getSpriteFromImage(d.debugRgba)
-	sprite.Draw(d.window, d.gameMatrix)
+	sprite.Draw(d.window, pixel.IM)
 }
 
 // Convenience function to get a pixel sprite from an image RGBA.
