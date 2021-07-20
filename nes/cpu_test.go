@@ -24,7 +24,7 @@ func TestAmIZY(t *testing.T) {}
 // Instructions
 func TestOpAND(t *testing.T) {
 	nes := NewBus()
-	cpu := nes.cpu
+	cpu := nes.Cpu
 
 	// Snapshot
 	flags := cpu.Status
@@ -47,7 +47,7 @@ func TestOpAND(t *testing.T) {
 		{cpu.getFlag(StatusFlagV), flags & byte(StatusFlagV)}, // unchanged
 		{cpu.getFlag(StatusFlagN) > 0, cpu.A&(1<<7) > 0},      // set if bit 7 of accumulator is set
 
-		{before & cpu.fetched, after}, // compare logical AND results
+		{before & cpu.Fetched, after}, // compare logical AND results
 	}
 
 	// Test
@@ -60,11 +60,11 @@ func TestOpAND(t *testing.T) {
 
 func TestOpASL(t *testing.T) {
 	nes := NewBus()
-	cpu := nes.cpu
+	cpu := nes.Cpu
 
 	// Snapshot
 	flags := cpu.Status
-	before := cpu.fetched
+	before := cpu.Fetched
 
 	// Operate
 	cpu.opASL()
@@ -73,7 +73,7 @@ func TestOpASL(t *testing.T) {
 	if cpu.isImpliedAddr {
 		after = cpu.A
 	} else {
-		after = cpu.read(cpu.addrAbs)
+		after = cpu.read(cpu.AddrAbs)
 	}
 
 	tests := []struct {
@@ -101,7 +101,7 @@ func TestOpASL(t *testing.T) {
 
 func TestOpBPL(t *testing.T) {
 	nes := NewBus()
-	cpu := nes.cpu
+	cpu := nes.Cpu
 
 	// Snapshot
 	flags := cpu.Status
@@ -132,7 +132,7 @@ func TestOpBPL(t *testing.T) {
 
 func TestOpBRK(t *testing.T) {
 	nes := NewBus()
-	cpu := nes.cpu
+	cpu := nes.Cpu
 
 	// Snapshot
 	flags := cpu.Status
@@ -167,7 +167,7 @@ func TestOpBRK(t *testing.T) {
 
 func TestOpCLC(t *testing.T) {
 	nes := NewBus()
-	cpu := nes.cpu
+	cpu := nes.Cpu
 
 	// Snapshot
 	flags := cpu.Status
@@ -198,7 +198,7 @@ func TestOpCLC(t *testing.T) {
 
 func TestOpJSR(t *testing.T) {
 	nes := NewBus()
-	cpu := nes.cpu
+	cpu := nes.Cpu
 
 	// Snapshot
 	flags := cpu.Status
@@ -229,7 +229,7 @@ func TestOpJSR(t *testing.T) {
 
 func TestOpORA(t *testing.T) {
 	nes := NewBus()
-	cpu := nes.cpu
+	cpu := nes.Cpu
 
 	// Snapshot
 	flags := cpu.Status
@@ -250,7 +250,7 @@ func TestOpORA(t *testing.T) {
 		{cpu.getFlag(StatusFlagV), flags & byte(StatusFlagV)}, // unchanged
 		{cpu.getFlag(StatusFlagN) > 0, cpu.A&(1<<7) > 0},      // set if bit 7 set
 
-		{cpu.A, regA | cpu.read(cpu.addrAbs)}, // check the inclusive OR
+		{cpu.A, regA | cpu.read(cpu.AddrAbs)}, // check the inclusive OR
 	}
 
 	// Test
@@ -263,7 +263,7 @@ func TestOpORA(t *testing.T) {
 
 func TestOpPHP(t *testing.T) {
 	nes := NewBus()
-	cpu := nes.cpu
+	cpu := nes.Cpu
 
 	// Snapshot
 	flags := cpu.Status
