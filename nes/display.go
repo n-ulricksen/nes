@@ -1,7 +1,6 @@
 package nes
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"log"
@@ -15,8 +14,9 @@ type Display struct {
 	gameRgba  *image.RGBA // Rectangle of RGBA points, used to manipulate pixels on the screen.
 	debugRgba *image.RGBA
 
-	window     *pixelgl.Window
-	gameMatrix pixel.Matrix // Scale and position to render the running NES game.
+	window      *pixelgl.Window
+	gameMatrix  pixel.Matrix // Scale and position to render the running NES game.
+	debugMatrix pixel.Matrix // Scale and position to render the running NES game.
 }
 
 const (
@@ -30,11 +30,8 @@ const (
 	screenPosY float64 = 400
 
 	// Debug display settings
-	debugResW float64 = 256
+	debugResW float64 = 512
 	debugResH float64 = screenH
-
-	debugScreenPosX float64 = screenPosX + scale*nesResW
-	debugScreenPosY float64 = screenPosY
 )
 
 func NewDisplay() *Display {
@@ -56,17 +53,20 @@ func NewDisplay() *Display {
 
 	// Calculate matrix recquired to render game to display based on the set scale.
 	pic := pixel.PictureDataFromImage(gameRgba)
+	gameMatrix := pixel.IM.Moved(pic.Bounds().Center().Scaled(scale))
+	gameMatrix = gameMatrix.Scaled(pic.Bounds().Center().Scaled(scale), scale)
 
-	matrix := pixel.IM.Moved(pic.Bounds().Center().Scaled(scale))
-	matrix = matrix.Scaled(pic.Bounds().Center().Scaled(scale), scale)
-
-	fmt.Printf("debug X: %v\ndebugY: %v\n", debugScreenPosX, debugScreenPosY)
+	// Calculate debug window matrix used to treat (0, 0) as top-left corner of
+	// the debug panel.
+	pic = pixel.PictureDataFromImage(debugRgba)
+	debugMatrix := pixel.IM.Moved(pic.Bounds().Center().Add(pixel.V(screenW, 0)))
 
 	return &Display{
 		gameRgba,
 		debugRgba,
 		window,
-		matrix,
+		gameMatrix,
+		debugMatrix,
 	}
 }
 
@@ -89,8 +89,19 @@ func (d *Display) updateGameDisplay() {
 }
 
 func (d *Display) updateDebugDisplay() {
+	for i := 0; i < 128; i++ {
+		for j := 0; j < 128; j++ {
+			d.debugRgba.SetRGBA(i, j, colornames.Coral)
+		}
+	}
+
+	for i := 200; i < 200+128; i++ {
+		for j := 200; j < 200+128; j++ {
+			d.debugRgba.SetRGBA(i, j, colornames.Aqua)
+		}
+	}
 	sprite := getSpriteFromImage(d.debugRgba)
-	sprite.Draw(d.window, pixel.IM)
+	sprite.Draw(d.window, d.debugMatrix)
 }
 
 // Convenience function to get a pixel sprite from an image RGBA.
