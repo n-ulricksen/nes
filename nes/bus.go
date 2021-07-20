@@ -13,6 +13,7 @@ type Bus struct {
 	Ppu  *Ppu            // Picture processing unit.
 	Ram  [64 * 1024]byte // 64kb RAM used for initial development.
 	Cart *Cartridge      // NES Cartridge.
+	Disp *Display
 
 	ClockCount int
 }
@@ -31,6 +32,9 @@ const (
 	// Cartridge
 	cartMinAddr uint16 = 0x4020
 	cartMaxAddr uint16 = 0xFFFF
+
+	// Frames per second
+	fps float64 = 30.0
 )
 
 func NewBus() *Bus {
@@ -52,15 +56,19 @@ func NewBus() *Bus {
 
 func (b *Bus) Run() {
 	// Create a PixelGL display for the PPU to render to.
-	b.Ppu.display = NewDisplay()
+	display := NewDisplay()
+	b.Disp = display
 
-	intervalInMilli := (float64(1.0) / float64(30.0)) * 1000
+	// PPU needs access to the display.
+	b.Ppu.ConnectDisplay(display)
+
+	intervalInMilli := (1 / fps) * 1000
 	interval := time.Duration(intervalInMilli) * time.Millisecond
-	fmt.Println(interval)
+	fmt.Println("Frame refresh time:", interval)
 
 	ticker := time.NewTicker(interval)
 
-	// XXX: run fast fast fast for now
+	// Use a time ticker to keep frames rendered steadily at a set FPS.
 	for {
 		for !b.Ppu.frameComplete {
 			b.Clock()
