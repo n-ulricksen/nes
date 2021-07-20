@@ -14,13 +14,21 @@ import (
 )
 
 func main() {
+	fmt.Println("Starting NES...")
 	nesEmulator := nes.NewBus()
 
+	// Load nestest CPU test ROM
+	//nesEmulator.LoadNestest()
+
+	// Load a test cartridge
+	cart := nes.NewCartridge("./roms/DK.nes")
+	nesEmulator.InsertCartridge(cart)
+
+	fmt.Println("Resetting NES...")
 	nesEmulator.Cpu.Reset()
 
-	nesEmulator.LoadNestest()
-
-	startDebugMode(nesEmulator)
+	//startDebugMode(nesEmulator)
+	pixelgl.Run(nesEmulator.Run)
 }
 
 func startDebugMode(nesEmu *nes.Bus) {
@@ -44,7 +52,7 @@ func startDebugMode(nesEmu *nes.Bus) {
 				}
 
 				for i := 0; i < cycles; i++ {
-					nesEmu.Cpu.Cycle()
+					nesEmu.Clock()
 				}
 				cycles = 0
 				nesEmu.CheckForNestestErrors()
@@ -76,6 +84,9 @@ func RunDebugWindow(nesEmu *nes.Bus, cycleChan chan<- bool) func() {
 
 		ramText := text.New(pixel.V(10, 768-20), basicAtlas)
 		regText := text.New(pixel.V(400, 768-20), basicAtlas)
+
+		// Main display (the running game)
+		// XXX: Might need to use a different graphics library
 
 		isAutoRun := false
 
