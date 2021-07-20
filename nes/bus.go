@@ -74,6 +74,8 @@ func (b *Bus) Run() {
 			b.Clock()
 		}
 
+		b.DrawDebugPanel()
+
 		<-ticker.C
 		ticker.Reset(interval)
 
@@ -132,6 +134,18 @@ func (b *Bus) Clock() {
 	}
 
 	b.ClockCount++
+}
+
+func (b *Bus) DrawDebugPanel() {
+	// Pattern tables
+	patternTable0 := b.Ppu.GetPatternTable(0)
+	patternTable1 := b.Ppu.GetPatternTable(1)
+
+	//sprite0 := getSpriteFromImage(patternTable0)
+	//sprite1 := getSpriteFromImage(patternTable1)
+
+	b.Disp.DrawDebugRGBA(0, 0, patternTable0)
+	b.Disp.DrawDebugRGBA(128+8, 0, patternTable1)
 }
 
 // Load a ROM to the NES.
