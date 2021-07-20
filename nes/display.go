@@ -23,7 +23,7 @@ const (
 	// Main NES display settings
 	nesResW    float64 = 256
 	nesResH    float64 = 240
-	scale      float64 = 2 // Scale at which to render NES display.
+	scale      float64 = 3 // Scale at which to render NES display.
 	screenW    float64 = nesResW * scale
 	screenH    float64 = nesResH * scale
 	screenPosX float64 = 600 // Where to render the display on the user's monitor.
@@ -74,6 +74,22 @@ func (d *Display) DrawPixel(x, y int, c color.RGBA) {
 	d.gameRgba.SetRGBA(x, y, c)
 }
 
+func (d *Display) DrawDebugPixel(x, y int, c color.RGBA) {
+	d.debugRgba.SetRGBA(x, y, c)
+}
+
+// DrawDebugRGBA draws a given image to an (x, y) offset within the debug image.
+func (d *Display) DrawDebugRGBA(x, y int, img *image.RGBA) {
+	for imgY := 0; imgY < img.Rect.Dy(); imgY++ {
+		for imgX := 0; imgX < img.Rect.Dx(); imgX++ {
+			c := img.RGBAAt(imgX, imgY)
+			d.DrawDebugPixel(x+imgX, y+imgY, c)
+		}
+	}
+}
+
+// UpdateScreen updates both the game display and the debug display using the
+// display's current image.RGBA representation of each.
 func (d *Display) UpdateScreen() {
 	d.window.Clear(colornames.Black)
 
@@ -89,17 +105,6 @@ func (d *Display) updateGameDisplay() {
 }
 
 func (d *Display) updateDebugDisplay() {
-	for i := 0; i < 128; i++ {
-		for j := 0; j < 128; j++ {
-			d.debugRgba.SetRGBA(i, j, colornames.Coral)
-		}
-	}
-
-	for i := 200; i < 200+128; i++ {
-		for j := 200; j < 200+128; j++ {
-			d.debugRgba.SetRGBA(i, j, colornames.Aqua)
-		}
-	}
 	sprite := getSpriteFromImage(d.debugRgba)
 	sprite.Draw(d.window, d.debugMatrix)
 }
