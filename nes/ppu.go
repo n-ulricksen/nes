@@ -186,7 +186,7 @@ func loadPalette(filepath string) [paletteSize]color.RGBA {
 // Pattern tables are 16x16 grids of tiles or sprites. Each tile is 8x8 pixels
 // and 16 bytes of memory.
 func (p *Ppu) GetPatternTable(i int) *image.RGBA {
-	rgba := image.NewRGBA(image.Rect(0, 0, 256, 256))
+	rgba := image.NewRGBA(image.Rect(0, 0, 128, 128))
 
 	for tileY := 0; tileY < 16; tileY++ {
 		for tileX := 0; tileX < 16; tileX++ {
@@ -207,7 +207,7 @@ func (p *Ppu) GetPatternTable(i int) *image.RGBA {
 					tileHi >>= 1
 
 					// Pixel position
-					x := tileX*8 + (7 - col) // Invert x-axis
+					x := tileX*8 + (7 - col) // Inverted x-axis
 					y := tileY*8 + row
 
 					// Pixel color

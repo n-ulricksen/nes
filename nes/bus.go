@@ -1,10 +1,13 @@
 package nes
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"time"
+
+	"github.com/faiface/pixel"
 )
 
 // Main bus used by the CPU.
@@ -54,6 +57,7 @@ func NewBus() *Bus {
 	return bus
 }
 
+// Run the NES.
 func (b *Bus) Run() {
 	// Create a PixelGL display for the PPU to render to.
 	display := NewDisplay()
@@ -141,11 +145,35 @@ func (b *Bus) DrawDebugPanel() {
 	patternTable0 := b.Ppu.GetPatternTable(0)
 	patternTable1 := b.Ppu.GetPatternTable(1)
 
-	//sprite0 := getSpriteFromImage(patternTable0)
-	//sprite1 := getSpriteFromImage(patternTable1)
+	b.Disp.DrawDebugRGBA(8, int(screenH)-128-8, patternTable0)
+	b.Disp.DrawDebugRGBA(128+16, int(screenH)-128-8, patternTable1)
 
-	b.Disp.DrawDebugRGBA(0, 0, patternTable0)
-	b.Disp.DrawDebugRGBA(128+8, 0, patternTable1)
+	b.Disp.debugText.Clear()
+	debugStr := b.getCpuDebugString()
+	b.Disp.WriteDebugString(debugStr)
+	b.Disp.debugText.Draw(b.Disp.window, pixel.IM)
+
+	b.Disp.window.Update()
+}
+
+func (b *Bus) getCpuDebugString() string {
+	var buf bytes.Buffer
+
+	buf.WriteString(fmt.Sprintf("Flags: %08b\n", b.Cpu.Status))
+	buf.WriteString(fmt.Sprintf("PC: %#04X\n", b.Cpu.Pc))
+	buf.WriteString(fmt.Sprintf("A: %#02X\n", b.Cpu.A))
+	buf.WriteString(fmt.Sprintf("X: %#02X\n", b.Cpu.X))
+	buf.WriteString(fmt.Sprintf("Y: %#02X\n", b.Cpu.Y))
+	buf.WriteString(fmt.Sprintf("SP: %#02X\n\n", b.Cpu.Sp))
+
+	// Cycles
+	buf.WriteString(fmt.Sprintf("Cycle Count: %d\n\n", b.Cpu.CycleCount))
+
+	// Instructions
+	//buf.WriteString(fmt.Sprintf(t, "%#02X: %s\n\n", b.Cpu.Opcode, nesEmu.Cpu.InstLookup[nesEmu.Cpu.Opcode].Name)
+	buf.WriteString(fmt.Sprintf("Previous Instruction:\n%s\n", b.Cpu.OpDiss))
+
+	return buf.String()
 }
 
 // Load a ROM to the NES.

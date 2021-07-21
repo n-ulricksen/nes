@@ -7,7 +7,9 @@ import (
 
 	"github.com/faiface/pixel"
 	"github.com/faiface/pixel/pixelgl"
+	"github.com/faiface/pixel/text"
 	"golang.org/x/image/colornames"
+	"golang.org/x/image/font/basicfont"
 )
 
 type Display struct {
@@ -17,6 +19,10 @@ type Display struct {
 	window      *pixelgl.Window
 	gameMatrix  pixel.Matrix // Scale and position to render the running NES game.
 	debugMatrix pixel.Matrix // Scale and position to render the running NES game.
+
+	// Debug text stuff
+	debugAtlas *text.Atlas
+	debugText  *text.Text
 }
 
 const (
@@ -61,12 +67,19 @@ func NewDisplay() *Display {
 	pic = pixel.PictureDataFromImage(debugRgba)
 	debugMatrix := pixel.IM.Moved(pic.Bounds().Center().Add(pixel.V(screenW, 0)))
 
+	// Debug text
+	debugAtlas := text.NewAtlas(basicfont.Face7x13, text.ASCII)
+	//debugText := text.New(pixel.V(400, 768-20), debugAtlas)
+	debugText := text.New(pixel.V(screenW+8, screenH-40), debugAtlas)
+
 	return &Display{
 		gameRgba,
 		debugRgba,
 		window,
 		gameMatrix,
 		debugMatrix,
+		debugAtlas,
+		debugText,
 	}
 }
 
@@ -88,13 +101,23 @@ func (d *Display) DrawDebugRGBA(x, y int, img *image.RGBA) {
 	}
 }
 
+// Write a string of text to the debug panel. Updates the display.
+func (d *Display) WriteDebugString(t string) {
+	d.debugText.Clear()
+	d.debugText.WriteString(t)
+	d.debugText.Draw(d.window, pixel.IM)
+}
+
 // UpdateScreen updates both the game display and the debug display using the
 // display's current image.RGBA representation of each.
 func (d *Display) UpdateScreen() {
 	d.window.Clear(colornames.Black)
 
 	d.updateGameDisplay()
+
+	// Update debug panel as well.
 	d.updateDebugDisplay()
+	d.debugText.Draw(d.window, pixel.IM)
 
 	d.window.Update()
 }

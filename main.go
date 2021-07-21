@@ -141,6 +141,7 @@ func printDebugMem(t *text.Text, nesEmu *nes.Bus) {
 	}
 }
 
+// XXX: remove
 func printDebugCpu(t *text.Text, nesEmu *nes.Bus) {
 	fmt.Fprintf(t, "Flags: %08b\n", nesEmu.Cpu.Status)
 	fmt.Fprintf(t, "PC: %#04X\n", nesEmu.Cpu.Pc)
