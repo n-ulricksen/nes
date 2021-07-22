@@ -33,11 +33,21 @@ type Ppu struct {
 
 	nameTable    [2][1024]byte // NES allows storage for 2 nametables
 	paletteTable [32]byte
+	patternTable [2][4096]byte
+
+	// PPU Registers
+	ppuController PpuReg
+	ppuMask       PpuReg
+	ppuStatus     PpuReg
 
 	// Intertal PPU variables
 	scanline      int  // Scanline count in the current frame
 	cycle         int  // Cycle count in the current scanline
 	frameComplete bool // Whether or not the current frame is finished rendering
+
+	addrLatch  byte   // Address latch to signal high or low byte - used by PPUSCROLL and PPUADDR.
+	dataBuffer byte   // PPU reads are delayed 1 cycle, so we buffer the byte being read.
+	addressTmp uint16 // Used to store the compiled address used for PPU data reads/writes.
 
 	display *Display
 
@@ -48,6 +58,10 @@ func NewPpu() *Ppu {
 	return &Ppu{
 		nameTable:    [2][1024]byte{},
 		paletteTable: [32]byte{},
+		patternTable: [2][4096]byte{},
+
+		ppuMask:   0x0,
+		ppuStatus: 0x0,
 
 		scanline:      0,
 		cycle:         0,
@@ -101,6 +115,10 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 	case 0x0000: // Controller
 	case 0x0001: // Mask
 	case 0x0002: // Status
+		// Reading the status register clears bit 7 and the PPU address latch.
+		p.ppuStatus.clearFlag(statusVBlank)
+		p.addrLatch = 0x0
+		data = byte(p.ppuStatus)
 	case 0x0003: // OAM Address
 	case 0x0004: // OAM Data
 	case 0x0005: // Scroll
@@ -114,12 +132,24 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 func (p *Ppu) cpuWrite(addr uint16, data byte) {
 	switch addr {
 	case 0x0000: // Controller
+		p.ppuController = PpuReg(data)
 	case 0x0001: // Mask
+		p.ppuMask = PpuReg(data)
 	case 0x0002: // Status
 	case 0x0003: // OAM Address
 	case 0x0004: // OAM Data
 	case 0x0005: // Scroll
 	case 0x0006: // Address
+		if p.addrLatch == 0x0 {
+			// First write
+			p.addrLatch = data
+		} else {
+			// Second write
+			p.addressTmp = uint16(p.addrLatch)<<8 | uint16(data)
+
+			p.addrLatch = 0x0
+		}
+
 	case 0x0007: // Data
 	}
 }
@@ -131,7 +161,9 @@ func (p *Ppu) ppuRead(addr uint16) byte {
 	var data byte
 
 	if addr >= patternTblAddr && addr <= patternTblAddrEnd {
-		data = p.Cart.ppuRead(addr)
+		tbl := (addr >> 12) & 0x1
+		idx := addr & 0x0FFF
+		data = p.patternTable[tbl][idx]
 	} else if addr >= nameTblAddr && addr <= nameTblAddrEnd {
 	} else if addr >= paletteAddr && addr <= paletteAddrEnd {
 		// Mirrored addresses
@@ -148,7 +180,9 @@ func (p *Ppu) ppuWrite(addr uint16, data byte) {
 	addr &= ppuMaxAddr // Max addressable range.
 
 	if addr >= patternTblAddr && addr <= patternTblAddrEnd {
-		p.Cart.ppuWrite(addr, data)
+		tbl := (addr >> 12) & 0x1
+		idx := addr & 0x0FFF
+		p.patternTable[tbl][idx] = data
 	} else if addr >= nameTblAddr && addr <= nameTblAddrEnd {
 	} else if addr >= paletteAddr && addr <= paletteAddrEnd {
 		// Mirrored addresses
