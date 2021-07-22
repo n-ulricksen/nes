@@ -4,7 +4,7 @@ package nes
 type PpuReg byte
 type PpuRegFlag byte
 
-// PPUCTRL flags
+// PPUCTRL flags - $2000
 const (
 	ctrlNameTblLo PpuRegFlag = 1 << iota
 	ctrlNameTblHi
@@ -16,7 +16,7 @@ const (
 	ctrlNmi
 )
 
-// PPUMASK flags
+// PPUMASK flags - $2001
 const (
 	maskGreyscale PpuRegFlag = 1 << iota
 	maskBgLeft
@@ -28,7 +28,7 @@ const (
 	maskEmphasizeBlue
 )
 
-// PPUSTATUS flags
+// PPUSTATUS flags - $2002
 const (
 	statusSpriteOverflow PpuRegFlag = 1 << (iota + 5)
 	statusSprite0Hit
@@ -47,6 +47,9 @@ func (r PpuReg) toggleFlag(flag PpuRegFlag) {
 	r ^= PpuReg(flag)
 }
 
-func (r PpuReg) isFlagSet(flag PpuRegFlag) bool {
-	return (r & PpuReg(flag)) != 0
+func (r PpuReg) getFlag(flag PpuRegFlag) PpuRegFlag {
+	if (r & PpuReg(flag)) == 0 {
+		return 0
+	}
+	return 1
 }

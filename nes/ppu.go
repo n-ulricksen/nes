@@ -47,7 +47,7 @@ type Ppu struct {
 
 	addrLatch  byte   // Address latch to signal high or low byte - used by PPUSCROLL and PPUADDR.
 	dataBuffer byte   // PPU reads are delayed 1 cycle, so we buffer the byte being read.
-	addressTmp uint16 // Used to store the compiled address used for PPU data reads/writes.
+	vramAddr   uint16 // Used to store the compiled address used for PPU data reads/writes.
 
 	display *Display
 
@@ -115,15 +115,37 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 	case 0x0000: // Controller
 	case 0x0001: // Mask
 	case 0x0002: // Status
-		// Reading the status register clears bit 7 and the PPU address latch.
+		// Reading the status register clears the VBlank flag and the PPU address latch.
 		p.ppuStatus.clearFlag(statusVBlank)
-		p.addrLatch = 0x0
+		p.addrLatch = 0
 		data = byte(p.ppuStatus)
 	case 0x0003: // OAM Address
 	case 0x0004: // OAM Data
 	case 0x0005: // Scroll
 	case 0x0006: // Address
 	case 0x0007: // Data
+		// CPU reads from VRAM are delayed by one cycle. The data to be read is
+		// stored in a buffer on the PPU. Reading from VRAM returns the current
+		// value stored on the buffer.
+		data = p.dataBuffer
+		p.dataBuffer = p.ppuRead(p.vramAddr)
+
+		// The buffer is not used when reading palette data. The data is instead
+		// placed directly onto the bus, bypassing the PPU data buffer.
+		if addr >= paletteAddr {
+			data = p.dataBuffer
+		}
+
+		// Accessing this port increments the VRAM address.
+		// Bit 2 of PPUCTRL determines the amount to increment by:
+		// 	0: increment by 1 (across)
+		// 	1: increment by 32 (down)
+		inc := p.ppuController.getFlag(ctrlVramInc)
+		if inc == 0 {
+			p.vramAddr += 1
+		} else {
+			p.vramAddr += 32
+		}
 	}
 
 	return data
@@ -140,17 +162,28 @@ func (p *Ppu) cpuWrite(addr uint16, data byte) {
 	case 0x0004: // OAM Data
 	case 0x0005: // Scroll
 	case 0x0006: // Address
-		if p.addrLatch == 0x0 {
-			// First write
-			p.addrLatch = data
+		if p.addrLatch == 0 {
+			// First write (high byte)
+			p.vramAddr = uint16(data)<<8 | p.vramAddr&0x00FF
+			p.addrLatch = 1
 		} else {
-			// Second write
-			p.addressTmp = uint16(p.addrLatch)<<8 | uint16(data)
-
-			p.addrLatch = 0x0
+			// Second write (low byte)
+			p.vramAddr = p.vramAddr&0xFF00 | uint16(data)
+			p.addrLatch = 0
 		}
-
 	case 0x0007: // Data
+		p.ppuWrite(p.vramAddr, data)
+
+		// Accessing this port increments the VRAM address.
+		// Bit 2 of PPUCTRL determines the amount to increment by:
+		// 	0: increment by 1 (across)
+		// 	1: increment by 32 (down)
+		inc := p.ppuController.getFlag(ctrlVramInc)
+		if inc == 0 {
+			p.vramAddr += 1
+		} else {
+			p.vramAddr += 32
+		}
 	}
 }
 
