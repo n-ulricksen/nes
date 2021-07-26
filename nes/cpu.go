@@ -29,6 +29,8 @@ type Cpu6502 struct {
 
 	InstLookup [16 * 16]Instruction // Instruction operation lookup
 
+	AddrModeFns map[AddressingMode]func() byte // Addressing mode name -> function map
+
 	OpDiss string // Dissasembly for the current instruction, used for debug
 
 	Logger *log.Logger // CPU logging
@@ -69,37 +71,54 @@ func NewCpu6502() *Cpu6502 {
 	// Create the lookup table containing all the CPU instructions.
 	// Reference: http://archive.6502.org/datasheets/rockwell_r650x_r651x.pdf
 	cpu.InstLookup = [16 * 16]Instruction{
-		{"BRK", cpu.opBRK, cpu.amIMP, 7}, {"ORA", cpu.opORA, cpu.amIZX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amZP0, 3}, {"ORA", cpu.opORA, cpu.amZP0, 3}, {"ASL", cpu.opASL, cpu.amZP0, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"PHP", cpu.opPHP, cpu.amIMP, 3}, {"ORA", cpu.opORA, cpu.amIMM, 2}, {"ASL", cpu.opASL, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amABS, 4}, {"ORA", cpu.opORA, cpu.amABS, 4}, {"ASL", cpu.opASL, cpu.amABS, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BRK", cpu.opBRK, IMP, 7}, {"ORA", cpu.opORA, IZX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ZP0, 3}, {"ORA", cpu.opORA, ZP0, 3}, {"ASL", cpu.opASL, ZP0, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"PHP", cpu.opPHP, IMP, 3}, {"ORA", cpu.opORA, IMM, 2}, {"ASL", cpu.opASL, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ABS, 4}, {"ORA", cpu.opORA, ABS, 4}, {"ASL", cpu.opASL, ABS, 6}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"BPL", cpu.opBPL, cpu.amREL, 2}, {"ORA", cpu.opORA, cpu.amIZY, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amZPX, 4}, {"ORA", cpu.opORA, cpu.amZPX, 4}, {"ASL", cpu.opASL, cpu.amZPX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"CLC", cpu.opCLC, cpu.amIMP, 2}, {"ORA", cpu.opORA, cpu.amABY, 4}, {"NOP", cpu.opNOP, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amABX, 4}, {"ORA", cpu.opORA, cpu.amABX, 4}, {"ASL", cpu.opASL, cpu.amABX, 7}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BPL", cpu.opBPL, REL, 2}, {"ORA", cpu.opORA, IZY, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ZPX, 4}, {"ORA", cpu.opORA, ZPX, 4}, {"ASL", cpu.opASL, ZPX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"CLC", cpu.opCLC, IMP, 2}, {"ORA", cpu.opORA, ABY, 4}, {"NOP", cpu.opNOP, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ABX, 4}, {"ORA", cpu.opORA, ABX, 4}, {"ASL", cpu.opASL, ABX, 7}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"JSR", cpu.opJSR, cpu.amABS, 6}, {"AND", cpu.opAND, cpu.amIZX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"BIT", cpu.opBIT, cpu.amZP0, 3}, {"AND", cpu.opAND, cpu.amZP0, 3}, {"ROL", cpu.opROL, cpu.amZP0, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"PLP", cpu.opPLP, cpu.amIMP, 4}, {"AND", cpu.opAND, cpu.amIMM, 2}, {"ROL", cpu.opROL, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"BIT", cpu.opBIT, cpu.amABS, 4}, {"AND", cpu.opAND, cpu.amABS, 4}, {"ROL", cpu.opROL, cpu.amABS, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"JSR", cpu.opJSR, ABS, 6}, {"AND", cpu.opAND, IZX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"BIT", cpu.opBIT, ZP0, 3}, {"AND", cpu.opAND, ZP0, 3}, {"ROL", cpu.opROL, ZP0, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"PLP", cpu.opPLP, IMP, 4}, {"AND", cpu.opAND, IMM, 2}, {"ROL", cpu.opROL, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"BIT", cpu.opBIT, ABS, 4}, {"AND", cpu.opAND, ABS, 4}, {"ROL", cpu.opROL, ABS, 6}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"BMI", cpu.opBMI, cpu.amREL, 2}, {"AND", cpu.opAND, cpu.amIZY, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amZPX, 4}, {"AND", cpu.opAND, cpu.amZPX, 4}, {"ROL", cpu.opROL, cpu.amZPX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"SEC", cpu.opSEC, cpu.amIMP, 2}, {"AND", cpu.opAND, cpu.amABY, 4}, {"NOP", cpu.opNOP, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amABX, 4}, {"AND", cpu.opAND, cpu.amABX, 4}, {"ROL", cpu.opROL, cpu.amABX, 7}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BMI", cpu.opBMI, REL, 2}, {"AND", cpu.opAND, IZY, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ZPX, 4}, {"AND", cpu.opAND, ZPX, 4}, {"ROL", cpu.opROL, ZPX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"SEC", cpu.opSEC, IMP, 2}, {"AND", cpu.opAND, ABY, 4}, {"NOP", cpu.opNOP, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ABX, 4}, {"AND", cpu.opAND, ABX, 4}, {"ROL", cpu.opROL, ABX, 7}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"RTI", cpu.opRTI, cpu.amIMP, 6}, {"EOR", cpu.opEOR, cpu.amIZX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amZP0, 3}, {"EOR", cpu.opEOR, cpu.amZP0, 3}, {"LSR", cpu.opLSR, cpu.amZP0, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"PHA", cpu.opPHA, cpu.amIMP, 3}, {"EOR", cpu.opEOR, cpu.amIMM, 2}, {"LSR", cpu.opLSR, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"JMP", cpu.opJMP, cpu.amABS, 3}, {"EOR", cpu.opEOR, cpu.amABS, 4}, {"LSR", cpu.opLSR, cpu.amABS, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"RTI", cpu.opRTI, IMP, 6}, {"EOR", cpu.opEOR, IZX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ZP0, 3}, {"EOR", cpu.opEOR, ZP0, 3}, {"LSR", cpu.opLSR, ZP0, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"PHA", cpu.opPHA, IMP, 3}, {"EOR", cpu.opEOR, IMM, 2}, {"LSR", cpu.opLSR, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"JMP", cpu.opJMP, ABS, 3}, {"EOR", cpu.opEOR, ABS, 4}, {"LSR", cpu.opLSR, ABS, 6}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"BVC", cpu.opBVC, cpu.amREL, 2}, {"EOR", cpu.opEOR, cpu.amIZY, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amZPX, 4}, {"EOR", cpu.opEOR, cpu.amZPX, 4}, {"LSR", cpu.opLSR, cpu.amZPX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"CLI", cpu.opCLI, cpu.amIMP, 2}, {"EOR", cpu.opEOR, cpu.amABY, 4}, {"NOP", cpu.opNOP, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amABX, 4}, {"EOR", cpu.opEOR, cpu.amABX, 4}, {"LSR", cpu.opLSR, cpu.amABX, 7}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BVC", cpu.opBVC, REL, 2}, {"EOR", cpu.opEOR, IZY, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ZPX, 4}, {"EOR", cpu.opEOR, ZPX, 4}, {"LSR", cpu.opLSR, ZPX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"CLI", cpu.opCLI, IMP, 2}, {"EOR", cpu.opEOR, ABY, 4}, {"NOP", cpu.opNOP, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ABX, 4}, {"EOR", cpu.opEOR, ABX, 4}, {"LSR", cpu.opLSR, ABX, 7}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"RTS", cpu.opRTS, cpu.amIMP, 6}, {"ADC", cpu.opADC, cpu.amIZX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amZP0, 3}, {"ADC", cpu.opADC, cpu.amZP0, 3}, {"ROR", cpu.opROR, cpu.amZP0, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"PLA", cpu.opPLA, cpu.amIMP, 4}, {"ADC", cpu.opADC, cpu.amIMM, 2}, {"ROR", cpu.opROR, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"JMP", cpu.opJMP, cpu.amIND, 5}, {"ADC", cpu.opADC, cpu.amABS, 4}, {"ROR", cpu.opROR, cpu.amABS, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"RTS", cpu.opRTS, IMP, 6}, {"ADC", cpu.opADC, IZX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ZP0, 3}, {"ADC", cpu.opADC, ZP0, 3}, {"ROR", cpu.opROR, ZP0, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"PLA", cpu.opPLA, IMP, 4}, {"ADC", cpu.opADC, IMM, 2}, {"ROR", cpu.opROR, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"JMP", cpu.opJMP, IND, 5}, {"ADC", cpu.opADC, ABS, 4}, {"ROR", cpu.opROR, ABS, 6}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"BVS", cpu.opBVS, cpu.amREL, 2}, {"ADC", cpu.opADC, cpu.amIZY, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amZPX, 4}, {"ADC", cpu.opADC, cpu.amZPX, 4}, {"ROR", cpu.opROR, cpu.amZPX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"SEI", cpu.opSEI, cpu.amIMP, 2}, {"ADC", cpu.opADC, cpu.amABY, 4}, {"NOP", cpu.opNOP, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amABX, 4}, {"ADC", cpu.opADC, cpu.amABX, 4}, {"ROR", cpu.opROR, cpu.amABX, 7}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BVS", cpu.opBVS, REL, 2}, {"ADC", cpu.opADC, IZY, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ZPX, 4}, {"ADC", cpu.opADC, ZPX, 4}, {"ROR", cpu.opROR, ZPX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"SEI", cpu.opSEI, IMP, 2}, {"ADC", cpu.opADC, ABY, 4}, {"NOP", cpu.opNOP, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ABX, 4}, {"ADC", cpu.opADC, ABX, 4}, {"ROR", cpu.opROR, ABX, 7}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"NOP", cpu.opNOP, cpu.amIMM, 2}, {"STA", cpu.opSTA, cpu.amIZX, 6}, {"NOP", cpu.opNOP, cpu.amIMM, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"STY", cpu.opSTY, cpu.amZP0, 3}, {"STA", cpu.opSTA, cpu.amZP0, 3}, {"STX", cpu.opSTX, cpu.amZP0, 3}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"DEY", cpu.opDEY, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amIMM, 2}, {"TXA", cpu.opTXA, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"STY", cpu.opSTY, cpu.amABS, 4}, {"STA", cpu.opSTA, cpu.amABS, 4}, {"STX", cpu.opSTX, cpu.amABS, 4}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"NOP", cpu.opNOP, IMM, 2}, {"STA", cpu.opSTA, IZX, 6}, {"NOP", cpu.opNOP, IMM, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"STY", cpu.opSTY, ZP0, 3}, {"STA", cpu.opSTA, ZP0, 3}, {"STX", cpu.opSTX, ZP0, 3}, {"XXX", cpu.opXXX, IMP, 2}, {"DEY", cpu.opDEY, IMP, 2}, {"NOP", cpu.opNOP, IMM, 2}, {"TXA", cpu.opTXA, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"STY", cpu.opSTY, ABS, 4}, {"STA", cpu.opSTA, ABS, 4}, {"STX", cpu.opSTX, ABS, 4}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"BCC", cpu.opBCC, cpu.amREL, 2}, {"STA", cpu.opSTA, cpu.amIZY, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"STY", cpu.opSTY, cpu.amZPX, 4}, {"STA", cpu.opSTA, cpu.amZPX, 4}, {"STX", cpu.opSTX, cpu.amZPY, 4}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"TYA", cpu.opTYA, cpu.amIMP, 2}, {"STA", cpu.opSTA, cpu.amABY, 5}, {"TXS", cpu.opTXS, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"STA", cpu.opSTA, cpu.amABX, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BCC", cpu.opBCC, REL, 2}, {"STA", cpu.opSTA, IZY, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"STY", cpu.opSTY, ZPX, 4}, {"STA", cpu.opSTA, ZPX, 4}, {"STX", cpu.opSTX, ZPY, 4}, {"XXX", cpu.opXXX, IMP, 2}, {"TYA", cpu.opTYA, IMP, 2}, {"STA", cpu.opSTA, ABY, 5}, {"TXS", cpu.opTXS, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"STA", cpu.opSTA, ABX, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"LDY", cpu.opLDY, cpu.amIMM, 2}, {"LDA", cpu.opLDA, cpu.amIZX, 6}, {"LDX", cpu.opLDX, cpu.amIMM, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"LDY", cpu.opLDY, cpu.amZP0, 3}, {"LDA", cpu.opLDA, cpu.amZP0, 3}, {"LDX", cpu.opLDX, cpu.amZP0, 3}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"TAY", cpu.opTAY, cpu.amIMP, 2}, {"LDA", cpu.opLDA, cpu.amIMM, 2}, {"TAX", cpu.opTAX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"LDY", cpu.opLDY, cpu.amABS, 4}, {"LDA", cpu.opLDA, cpu.amABS, 4}, {"LDX", cpu.opLDX, cpu.amABS, 4}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"LDY", cpu.opLDY, IMM, 2}, {"LDA", cpu.opLDA, IZX, 6}, {"LDX", cpu.opLDX, IMM, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"LDY", cpu.opLDY, ZP0, 3}, {"LDA", cpu.opLDA, ZP0, 3}, {"LDX", cpu.opLDX, ZP0, 3}, {"XXX", cpu.opXXX, IMP, 2}, {"TAY", cpu.opTAY, IMP, 2}, {"LDA", cpu.opLDA, IMM, 2}, {"TAX", cpu.opTAX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"LDY", cpu.opLDY, ABS, 4}, {"LDA", cpu.opLDA, ABS, 4}, {"LDX", cpu.opLDX, ABS, 4}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"BCS", cpu.opBCS, cpu.amREL, 2}, {"LDA", cpu.opLDA, cpu.amIZY, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"LDY", cpu.opLDY, cpu.amZPX, 4}, {"LDA", cpu.opLDA, cpu.amZPX, 4}, {"LDX", cpu.opLDX, cpu.amZPY, 4}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"CLV", cpu.opCLV, cpu.amIMP, 2}, {"LDA", cpu.opLDA, cpu.amABY, 4}, {"TSX", cpu.opTSX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"LDY", cpu.opLDY, cpu.amABX, 4}, {"LDA", cpu.opLDA, cpu.amABX, 4}, {"LDX", cpu.opLDX, cpu.amABY, 4}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BCS", cpu.opBCS, REL, 2}, {"LDA", cpu.opLDA, IZY, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"LDY", cpu.opLDY, ZPX, 4}, {"LDA", cpu.opLDA, ZPX, 4}, {"LDX", cpu.opLDX, ZPY, 4}, {"XXX", cpu.opXXX, IMP, 2}, {"CLV", cpu.opCLV, IMP, 2}, {"LDA", cpu.opLDA, ABY, 4}, {"TSX", cpu.opTSX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"LDY", cpu.opLDY, ABX, 4}, {"LDA", cpu.opLDA, ABX, 4}, {"LDX", cpu.opLDX, ABY, 4}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"CPY", cpu.opCPY, cpu.amIMM, 2}, {"CMP", cpu.opCMP, cpu.amIZX, 6}, {"NOP", cpu.opNOP, cpu.amIMM, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"CPY", cpu.opCPY, cpu.amZP0, 3}, {"CMP", cpu.opCMP, cpu.amZP0, 3}, {"DEC", cpu.opDEC, cpu.amZP0, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"INY", cpu.opINY, cpu.amIMP, 2}, {"CMP", cpu.opCMP, cpu.amIMM, 2}, {"DEX", cpu.opDEX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"CPY", cpu.opCPY, cpu.amABS, 4}, {"CMP", cpu.opCMP, cpu.amABS, 4}, {"DEC", cpu.opDEC, cpu.amABS, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"CPY", cpu.opCPY, IMM, 2}, {"CMP", cpu.opCMP, IZX, 6}, {"NOP", cpu.opNOP, IMM, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"CPY", cpu.opCPY, ZP0, 3}, {"CMP", cpu.opCMP, ZP0, 3}, {"DEC", cpu.opDEC, ZP0, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"INY", cpu.opINY, IMP, 2}, {"CMP", cpu.opCMP, IMM, 2}, {"DEX", cpu.opDEX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"CPY", cpu.opCPY, ABS, 4}, {"CMP", cpu.opCMP, ABS, 4}, {"DEC", cpu.opDEC, ABS, 6}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"BNE", cpu.opBNE, cpu.amREL, 2}, {"CMP", cpu.opCMP, cpu.amIZY, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amZPX, 4}, {"CMP", cpu.opCMP, cpu.amZPX, 4}, {"DEC", cpu.opDEC, cpu.amZPX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"CLD", cpu.opCLD, cpu.amIMP, 2}, {"CMP", cpu.opCMP, cpu.amABY, 4}, {"NOP", cpu.opNOP, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amABX, 4}, {"CMP", cpu.opCMP, cpu.amABX, 4}, {"DEC", cpu.opDEC, cpu.amABX, 7}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BNE", cpu.opBNE, REL, 2}, {"CMP", cpu.opCMP, IZY, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ZPX, 4}, {"CMP", cpu.opCMP, ZPX, 4}, {"DEC", cpu.opDEC, ZPX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"CLD", cpu.opCLD, IMP, 2}, {"CMP", cpu.opCMP, ABY, 4}, {"NOP", cpu.opNOP, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ABX, 4}, {"CMP", cpu.opCMP, ABX, 4}, {"DEC", cpu.opDEC, ABX, 7}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"CPX", cpu.opCPX, cpu.amIMM, 2}, {"SBC", cpu.opSBC, cpu.amIZX, 6}, {"NOP", cpu.opNOP, cpu.amIMM, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"CPX", cpu.opCPX, cpu.amZP0, 3}, {"SBC", cpu.opSBC, cpu.amZP0, 3}, {"INC", cpu.opINC, cpu.amZP0, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"INX", cpu.opINX, cpu.amIMP, 2}, {"SBC", cpu.opSBC, cpu.amIMM, 2}, {"NOP", cpu.opNOP, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"CPX", cpu.opCPX, cpu.amABS, 4}, {"SBC", cpu.opSBC, cpu.amABS, 4}, {"INC", cpu.opINC, cpu.amABS, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"CPX", cpu.opCPX, IMM, 2}, {"SBC", cpu.opSBC, IZX, 6}, {"NOP", cpu.opNOP, IMM, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"CPX", cpu.opCPX, ZP0, 3}, {"SBC", cpu.opSBC, ZP0, 3}, {"INC", cpu.opINC, ZP0, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"INX", cpu.opINX, IMP, 2}, {"SBC", cpu.opSBC, IMM, 2}, {"NOP", cpu.opNOP, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"CPX", cpu.opCPX, ABS, 4}, {"SBC", cpu.opSBC, ABS, 4}, {"INC", cpu.opINC, ABS, 6}, {"XXX", cpu.opXXX, IMP, 2},
 
-		{"BEQ", cpu.opBEQ, cpu.amREL, 2}, {"SBC", cpu.opSBC, cpu.amIZY, 5}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amZPX, 4}, {"SBC", cpu.opSBC, cpu.amZPX, 4}, {"INC", cpu.opINC, cpu.amZPX, 6}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"SED", cpu.opSED, cpu.amIMP, 2}, {"SBC", cpu.opSBC, cpu.amABY, 4}, {"NOP", cpu.opNOP, cpu.amIMP, 2}, {"XXX", cpu.opXXX, cpu.amIMP, 2}, {"NOP", cpu.opNOP, cpu.amABX, 4}, {"SBC", cpu.opSBC, cpu.amABX, 4}, {"INC", cpu.opINC, cpu.amABX, 7}, {"XXX", cpu.opXXX, cpu.amIMP, 2},
+		{"BEQ", cpu.opBEQ, REL, 2}, {"SBC", cpu.opSBC, IZY, 5}, {"XXX", cpu.opXXX, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ZPX, 4}, {"SBC", cpu.opSBC, ZPX, 4}, {"INC", cpu.opINC, ZPX, 6}, {"XXX", cpu.opXXX, IMP, 2}, {"SED", cpu.opSED, IMP, 2}, {"SBC", cpu.opSBC, ABY, 4}, {"NOP", cpu.opNOP, IMP, 2}, {"XXX", cpu.opXXX, IMP, 2}, {"NOP", cpu.opNOP, ABX, 4}, {"SBC", cpu.opSBC, ABX, 4}, {"INC", cpu.opINC, ABX, 7}, {"XXX", cpu.opXXX, IMP, 2},
+	}
+
+	// Create an address mode map, used to determine addressing mode function
+	// by name.
+	cpu.AddrModeFns = map[AddressingMode]func() byte{
+		IMP: cpu.amIMP,
+		IMM: cpu.amIMM,
+		REL: cpu.amREL,
+		ZP0: cpu.amZP0,
+		ZPX: cpu.amZPX,
+		ZPY: cpu.amZPY,
+		ABS: cpu.amABS,
+		ABX: cpu.amABX,
+		ABY: cpu.amABY,
+		IND: cpu.amIND,
+		IZX: cpu.amIZX,
+		IZY: cpu.amIZY,
 	}
 
 	return cpu
@@ -230,7 +249,7 @@ func (cpu *Cpu6502) Clock() {
 
 		// Add any additional cycles needed by either the addressing mode or
 		// instruction.
-		extraCycles1 := inst.AddrMode()
+		extraCycles1 := cpu.AddrModeFns[inst.AddrMode]()
 
 		// Execute the instruction.
 		extraCycles2 := inst.Execute()
@@ -429,7 +448,7 @@ func (cpu *Cpu6502) amIZY() byte {
 type Instruction struct {
 	Name     string
 	Execute  func() byte
-	AddrMode func() byte
+	AddrMode AddressingMode
 	Cycles   byte
 }
 
