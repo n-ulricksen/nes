@@ -21,8 +21,13 @@ func main() {
 	//nesEmulator.LoadNestest()
 
 	// Load a test cartridge
-	cart := nes.NewCartridge("./roms/DK.nes")
+	//cart := nes.NewCartridge("./roms/DK.nes")
+	//cart := nes.NewCartridge("./roms/SMB.nes")
+	cart := nes.NewCartridge("./external_tests/nestest/nestest.nes")
 	nesEmulator.InsertCartridge(cart)
+
+	nesEmulator.Cpu.Disassemble(0x0000, 0xFFFF)
+	//fmt.Println(disassembly)
 
 	fmt.Println("Resetting NES...")
 	nesEmulator.Cpu.Reset()
@@ -155,7 +160,7 @@ func printDebugCpu(t *text.Text, nesEmu *nes.Bus) {
 
 	// Instructions
 	//fmt.Fprintf(t, "%#02X: %s\n\n", nesEmu.Cpu.Opcode, nesEmu.Cpu.InstLookup[nesEmu.Cpu.Opcode].Name)
-	fmt.Fprintf(t, "Previous Instruction:\n%s\n", nesEmu.Cpu.OpDiss)
+	//fmt.Fprintf(t, "Previous Instruction:\n%s\n", nesEmu.Cpu.OpDiss)
 }
 
 func trimWhitespace(s string) string {

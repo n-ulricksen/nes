@@ -2,12 +2,11 @@ package nes
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"time"
-
-	"github.com/faiface/pixel"
 )
 
 // Main bus used by the CPU.
@@ -33,7 +32,8 @@ const (
 	ppuMirror  uint16 = 0x0007 // mirror every 8 bytes.
 
 	// Cartridge
-	cartMinAddr uint16 = 0x4020
+	//cartMinAddr uint16 = 0x4020
+	cartMinAddr uint16 = 0x8000 // XXX: changing this for now to get disassembler to work
 	cartMaxAddr uint16 = 0xFFFF
 
 	// Frames per second
@@ -48,7 +48,7 @@ func NewBus() *Bus {
 	bus := &Bus{
 		Cpu: cpu,
 		Ppu: NewPpu(),
-		Ram: [64 * 1024]byte{}, // fake RAM for now...
+		Ram: [64 * 1024]byte{},
 	}
 
 	// Connect this bus to the cpu.
@@ -70,18 +70,20 @@ func (b *Bus) Run() {
 	interval := time.Duration(intervalInMilli) * time.Millisecond
 	fmt.Println("Frame refresh time:", interval)
 
-	ticker := time.NewTicker(interval)
+	//ticker := time.NewTicker(interval)
+	fmt.Println(b.Cpu.disassembly)
 
 	// Use a time ticker to keep frames rendered steadily at a set FPS.
-	for {
+	for !display.window.Closed() {
 		for !b.Ppu.frameComplete {
 			b.Clock()
 		}
 
 		b.DrawDebugPanel()
 
-		<-ticker.C
-		ticker.Reset(interval)
+		//<-ticker.C
+		//ticker.Reset(interval)
+		time.Sleep(interval)
 
 		// Prepare for new frame
 		b.Ppu.frameComplete = false
@@ -137,23 +139,62 @@ func (b *Bus) Clock() {
 		b.Cpu.Clock()
 	}
 
+	if b.Ppu.nmi {
+		b.Ppu.nmi = false
+		b.Cpu.NMI()
+	}
+
 	b.ClockCount++
 }
 
+// TODO: move this out of Bus, and into main or something. Also, rewrite this.
 func (b *Bus) DrawDebugPanel() {
 	// Pattern tables
 	patternTable0 := b.Ppu.GetPatternTable(0)
 	patternTable1 := b.Ppu.GetPatternTable(1)
 
-	b.Disp.DrawDebugRGBA(8, int(screenH)-128-8, patternTable0)
-	b.Disp.DrawDebugRGBA(128+16, int(screenH)-128-8, patternTable1)
+	b.Disp.DrawDebugRGBA(8, int(gameH)-128-8, patternTable0)
+	b.Disp.DrawDebugRGBA(128+16, int(gameH)-128-8, patternTable1)
 
-	b.Disp.debugText.Clear()
+	b.Disp.debugRegText.Clear()
 	debugStr := b.getCpuDebugString()
-	b.Disp.WriteDebugString(debugStr)
-	b.Disp.debugText.Draw(b.Disp.window, pixel.IM)
+	b.Disp.WriteRegDebugString(debugStr)
 
-	b.Disp.window.Update()
+	// Disassembly
+	diss := b.getDisassemblyLines()
+	b.Disp.WriteInstDebugString(diss)
+}
+
+func (b *Bus) getDisassemblyLines() string {
+	var buf bytes.Buffer
+
+	pc := b.Cpu.Pc
+
+	idx := pc
+	for i := 0; i < 10; i++ {
+		idx, err := getNextIdx(&b.Cpu.disassembly, idx)
+		if err != nil {
+			// End of the map
+			break
+		}
+		idx++
+		buf.WriteString(b.Cpu.disassembly[idx])
+		buf.WriteByte('\n')
+	}
+
+	return buf.String()
+}
+
+// Items are stored by memory address, not all memory address are filled. This
+// function returns the next item at or after the given memory address.
+func getNextIdx(m *map[uint16]string, addr uint16) (uint16, error) {
+	for _, ok := (*m)[addr]; !ok; addr++ {
+		if addr >= 0xFFFF {
+			return 0, errors.New("End of map")
+		}
+	}
+
+	return addr, nil
 }
 
 func (b *Bus) getCpuDebugString() string {
@@ -171,7 +212,7 @@ func (b *Bus) getCpuDebugString() string {
 
 	// Instructions
 	//buf.WriteString(fmt.Sprintf(t, "%#02X: %s\n\n", b.Cpu.Opcode, nesEmu.Cpu.InstLookup[nesEmu.Cpu.Opcode].Name)
-	buf.WriteString(fmt.Sprintf("Previous Instruction:\n%s\n", b.Cpu.OpDiss))
+	//buf.WriteString(fmt.Sprintf("Previous Instruction:\n%s\n", b.Cpu.OpDiss))
 
 	return buf.String()
 }

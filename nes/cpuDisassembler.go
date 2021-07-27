@@ -100,5 +100,7 @@ func (cpu *Cpu6502) Disassemble(startAddr, endAddr uint16) map[uint16]string {
 		lineDiss.Reset()
 	}
 
+	cpu.disassembly = disassembly
+
 	return disassembly
 }

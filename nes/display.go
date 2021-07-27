@@ -21,8 +21,9 @@ type Display struct {
 	debugMatrix pixel.Matrix // Scale and position to render the running NES game.
 
 	// Debug text stuff
-	debugAtlas *text.Atlas
-	debugText  *text.Text
+	debugAtlas    *text.Atlas // Used to load the font
+	debugRegText  *text.Text  // CPU register printout
+	debugInstText *text.Text  // CPU instruction disassembly
 }
 
 const (
@@ -30,14 +31,14 @@ const (
 	nesResW    float64 = 256
 	nesResH    float64 = 240
 	scale      float64 = 3 // Scale at which to render NES display.
-	screenW    float64 = nesResW * scale
-	screenH    float64 = nesResH * scale
+	gameW      float64 = nesResW * scale
+	gameH      float64 = nesResH * scale
 	screenPosX float64 = 600 // Where to render the display on the user's monitor.
 	screenPosY float64 = 400
 
 	// Debug display settings
 	debugResW float64 = 512
-	debugResH float64 = screenH
+	debugResH float64 = gameH
 )
 
 func NewDisplay() *Display {
@@ -48,7 +49,7 @@ func NewDisplay() *Display {
 
 	config := pixelgl.WindowConfig{
 		Title:    "NES Emulator",
-		Bounds:   pixel.R(0, 0, screenW+debugResW, screenH),
+		Bounds:   pixel.R(0, 0, gameW+debugResW, gameH),
 		Position: pixel.V(screenPosX, screenPosY),
 		VSync:    true,
 	}
@@ -65,12 +66,13 @@ func NewDisplay() *Display {
 	// Calculate debug window matrix used to treat (0, 0) as top-left corner of
 	// the debug panel.
 	pic = pixel.PictureDataFromImage(debugRgba)
-	debugMatrix := pixel.IM.Moved(pic.Bounds().Center().Add(pixel.V(screenW, 0)))
+	debugMatrix := pixel.IM.Moved(pic.Bounds().Center().Add(pixel.V(gameW, 0)))
 
 	// Debug text
 	debugAtlas := text.NewAtlas(basicfont.Face7x13, text.ASCII)
 	//debugText := text.New(pixel.V(400, 768-20), debugAtlas)
-	debugText := text.New(pixel.V(screenW+8, screenH-40), debugAtlas)
+	debugRegText := text.New(pixel.V(gameW+8, gameH-40), debugAtlas)
+	debugInstText := text.New(pixel.V(gameW+8, gameH-180), debugAtlas)
 
 	return &Display{
 		gameRgba,
@@ -79,7 +81,8 @@ func NewDisplay() *Display {
 		gameMatrix,
 		debugMatrix,
 		debugAtlas,
-		debugText,
+		debugRegText,
+		debugInstText,
 	}
 }
 
@@ -101,11 +104,16 @@ func (d *Display) DrawDebugRGBA(x, y int, img *image.RGBA) {
 	}
 }
 
-// Write a string of text to the debug panel. Updates the display.
-func (d *Display) WriteDebugString(t string) {
-	d.debugText.Clear()
-	d.debugText.WriteString(t)
-	d.debugText.Draw(d.window, pixel.IM)
+// Write a string of text to the CPU register section of the debug panel.
+func (d *Display) WriteRegDebugString(t string) {
+	d.debugRegText.Clear()
+	d.debugRegText.WriteString(t)
+}
+
+// Write a string of text to the isntruction disassembly section of the debug panel.
+func (d *Display) WriteInstDebugString(t string) {
+	d.debugInstText.Clear()
+	d.debugInstText.WriteString(t)
 }
 
 // UpdateScreen updates both the game display and the debug display using the
@@ -117,7 +125,8 @@ func (d *Display) UpdateScreen() {
 
 	// Update debug panel as well.
 	d.updateDebugDisplay()
-	d.debugText.Draw(d.window, pixel.IM)
+	d.debugRegText.Draw(d.window, pixel.IM)
+	d.debugInstText.Draw(d.window, pixel.IM)
 
 	d.window.Update()
 }
