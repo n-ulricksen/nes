@@ -35,20 +35,20 @@ const (
 	statusVBlank
 )
 
-func (r PpuReg) setFlag(flag PpuRegFlag) {
-	r |= PpuReg(flag)
+func (r *PpuReg) setFlag(flag PpuRegFlag) {
+	*r |= PpuReg(flag)
 }
 
-func (r PpuReg) clearFlag(flag PpuRegFlag) {
-	r &^= PpuReg(flag)
+func (r *PpuReg) clearFlag(flag PpuRegFlag) {
+	*r &^= PpuReg(flag)
 }
 
-func (r PpuReg) toggleFlag(flag PpuRegFlag) {
-	r ^= PpuReg(flag)
+func (r *PpuReg) toggleFlag(flag PpuRegFlag) {
+	*r ^= PpuReg(flag)
 }
 
-func (r PpuReg) getFlag(flag PpuRegFlag) PpuRegFlag {
-	if (r & PpuReg(flag)) == 0 {
+func (r *PpuReg) getFlag(flag PpuRegFlag) PpuRegFlag {
+	if (*r & PpuReg(flag)) == 0 {
 		return 0
 	}
 	return 1

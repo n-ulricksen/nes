@@ -1,7 +1,6 @@
 package nes
 
 import (
-	"fmt"
 	"image"
 	"image/color"
 	"io/ioutil"
@@ -36,9 +35,11 @@ type Ppu struct {
 	patternTable [2][4096]byte
 
 	// PPU Registers
-	ppuController PpuReg
-	ppuMask       PpuReg
-	ppuStatus     PpuReg
+	ppuCtrl   *PpuReg
+	ppuMask   *PpuReg
+	ppuStatus *PpuReg
+
+	nmi bool // Set true to signal a non-maskable interrupt
 
 	// Intertal PPU variables
 	scanline      int  // Scanline count in the current frame
@@ -60,8 +61,9 @@ func NewPpu() *Ppu {
 		paletteTable: [32]byte{},
 		patternTable: [2][4096]byte{},
 
-		ppuMask:   0x0,
-		ppuStatus: 0x0,
+		ppuCtrl:   new(PpuReg),
+		ppuMask:   new(PpuReg),
+		ppuStatus: new(PpuReg),
 
 		scanline:      0,
 		cycle:         0,
@@ -90,6 +92,18 @@ func (p *Ppu) ConnectDisplay(d *Display) {
 func (p *Ppu) Clock() {
 	p.cycle++
 
+	if p.scanline == -1 && p.cycle == 1 {
+		p.ppuStatus.clearFlag(statusVBlank)
+	}
+
+	if p.scanline == 241 && p.cycle == 1 {
+		p.ppuStatus.setFlag(statusVBlank)
+
+		if p.ppuCtrl.getFlag(ctrlNmi) == 1 {
+			p.nmi = true
+		}
+	}
+
 	// Draw static to the screen for now (random color pixel)
 	i := uint8(rand.Intn(0x40))
 	p.display.DrawPixel(p.cycle-1, p.scanline, p.paletteRGBA[i])
@@ -115,10 +129,11 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 	case 0x0000: // Controller
 	case 0x0001: // Mask
 	case 0x0002: // Status
+		data = byte(*p.ppuStatus) & 0xE0
+
 		// Reading the status register clears the VBlank flag and the PPU address latch.
 		p.ppuStatus.clearFlag(statusVBlank)
 		p.addrLatch = 0
-		data = byte(p.ppuStatus)
 	case 0x0003: // OAM Address
 	case 0x0004: // OAM Data
 	case 0x0005: // Scroll
@@ -132,7 +147,7 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 
 		// The buffer is not used when reading palette data. The data is instead
 		// placed directly onto the bus, bypassing the PPU data buffer.
-		if addr >= paletteAddr {
+		if p.vramAddr >= paletteAddr {
 			data = p.dataBuffer
 		}
 
@@ -140,7 +155,7 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 		// Bit 2 of PPUCTRL determines the amount to increment by:
 		// 	0: increment by 1 (across)
 		// 	1: increment by 32 (down)
-		inc := p.ppuController.getFlag(ctrlVramInc)
+		inc := p.ppuCtrl.getFlag(ctrlVramInc)
 		if inc == 0 {
 			p.vramAddr += 1
 		} else {
@@ -152,11 +167,12 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 }
 
 func (p *Ppu) cpuWrite(addr uint16, data byte) {
+	//fmt.Printf("CPU writing %x to address %x.\n", data, addr)
 	switch addr {
 	case 0x0000: // Controller
-		p.ppuController = PpuReg(data)
+		*p.ppuCtrl = PpuReg(data)
 	case 0x0001: // Mask
-		p.ppuMask = PpuReg(data)
+		*p.ppuMask = PpuReg(data)
 	case 0x0002: // Status
 	case 0x0003: // OAM Address
 	case 0x0004: // OAM Data
@@ -178,7 +194,7 @@ func (p *Ppu) cpuWrite(addr uint16, data byte) {
 		// Bit 2 of PPUCTRL determines the amount to increment by:
 		// 	0: increment by 1 (across)
 		// 	1: increment by 32 (down)
-		inc := p.ppuController.getFlag(ctrlVramInc)
+		inc := p.ppuCtrl.getFlag(ctrlVramInc)
 		if inc == 0 {
 			p.vramAddr += 1
 		} else {
@@ -194,16 +210,18 @@ func (p *Ppu) ppuRead(addr uint16) byte {
 	var data byte
 
 	if addr >= patternTblAddr && addr <= patternTblAddrEnd {
-		tbl := (addr >> 12) & 0x1
-		idx := addr & 0x0FFF
-		data = p.patternTable[tbl][idx]
+		//tbl := (addr >> 12) & 0x1
+		//idx := addr & 0x0FFF
+		//data = p.patternTable[tbl][idx]
+		data = p.Cart.ppuRead(addr)
 	} else if addr >= nameTblAddr && addr <= nameTblAddrEnd {
 	} else if addr >= paletteAddr && addr <= paletteAddrEnd {
 		// Mirrored addresses
+		addr &= 0x1F
 		if addr == 0x3F10 || addr == 0x3F14 || addr == 0x3F18 || addr == 0x3F1C {
 			addr -= 0x10
 		}
-		data = p.paletteTable[addr&0xFF]
+		data = p.paletteTable[addr]
 	}
 
 	return data
@@ -213,16 +231,18 @@ func (p *Ppu) ppuWrite(addr uint16, data byte) {
 	addr &= ppuMaxAddr // Max addressable range.
 
 	if addr >= patternTblAddr && addr <= patternTblAddrEnd {
-		tbl := (addr >> 12) & 0x1
-		idx := addr & 0x0FFF
-		p.patternTable[tbl][idx] = data
+		//tbl := (addr >> 12) & 0x1
+		//idx := addr & 0x0FFF
+		//p.patternTable[tbl][idx] = data
+		p.Cart.ppuWrite(addr, data)
 	} else if addr >= nameTblAddr && addr <= nameTblAddrEnd {
 	} else if addr >= paletteAddr && addr <= paletteAddrEnd {
 		// Mirrored addresses
+		addr &= 0x1F
 		if addr == 0x3F10 || addr == 0x3F14 || addr == 0x3F18 || addr == 0x3F1C {
 			addr -= 0x10
 		}
-		p.paletteTable[addr&0xFF] = data
+		p.paletteTable[addr] = data
 	}
 }
 
@@ -242,8 +262,6 @@ func loadPalette(filepath string) [paletteSize]color.RGBA {
 		b := data[i+2]
 		palette[i/3] = color.RGBA{r, g, b, 255}
 	}
-	fmt.Println("Palette data:")
-	fmt.Println(palette)
 
 	return palette
 }
@@ -263,7 +281,7 @@ func (p *Ppu) GetPatternTable(i int) *image.RGBA {
 			for row := 0; row < 8; row++ {
 				// 2 bytes represent an 8 pixel row.
 				tileLo := p.ppuRead(patternTblSize*uint16(i) + memOffset + uint16(row))
-				tileHi := p.ppuRead(patternTblAddr*uint16(i) + memOffset + uint16(row) + 8)
+				tileHi := p.ppuRead(patternTblSize*uint16(i) + memOffset + uint16(row) + 8)
 
 				for col := 0; col < 8; col++ {
 					// Calculate each pixel's value (0-3). The LSB represents
@@ -292,5 +310,6 @@ func (p *Ppu) GetPatternTable(i int) *image.RGBA {
 
 func (p *Ppu) getColorFromPalette(palette, pixel byte) color.RGBA {
 	idx := p.ppuRead(paletteAddr + uint16((palette<<2)+pixel))
-	return p.paletteRGBA[idx]
+
+	return p.paletteRGBA[idx&0x3F]
 }
