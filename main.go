@@ -17,17 +17,13 @@ func main() {
 	fmt.Println("Starting NES...")
 	nesEmulator := nes.NewBus()
 
-	// Load nestest CPU test ROM
-	//nesEmulator.LoadNestest()
-
 	// Load a test cartridge
 	//cart := nes.NewCartridge("./roms/DK.nes")
-	//cart := nes.NewCartridge("./roms/SMB.nes")
-	cart := nes.NewCartridge("./external_tests/nestest/nestest.nes")
+	cart := nes.NewCartridge("./roms/SMB.nes")
+	//cart := nes.NewCartridge("./external_tests/nestest/nestest.nes")
 	nesEmulator.InsertCartridge(cart)
 
 	nesEmulator.Cpu.Disassemble(0x0000, 0xFFFF)
-	//fmt.Println(disassembly)
 
 	fmt.Println("Resetting NES...")
 	nesEmulator.Cpu.Reset()

@@ -70,7 +70,6 @@ func NewDisplay() *Display {
 
 	// Debug text
 	debugAtlas := text.NewAtlas(basicfont.Face7x13, text.ASCII)
-	//debugText := text.New(pixel.V(400, 768-20), debugAtlas)
 	debugRegText := text.New(pixel.V(gameW+8, gameH-40), debugAtlas)
 	debugInstText := text.New(pixel.V(gameW+8, gameH-180), debugAtlas)
 

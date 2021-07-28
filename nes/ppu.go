@@ -92,10 +92,12 @@ func (p *Ppu) ConnectDisplay(d *Display) {
 func (p *Ppu) Clock() {
 	p.cycle++
 
+	// Enter rendering mode
 	if p.scanline == -1 && p.cycle == 1 {
 		p.ppuStatus.clearFlag(statusVBlank)
 	}
 
+	// Enter vertical blank
 	if p.scanline == 241 && p.cycle == 1 {
 		p.ppuStatus.setFlag(statusVBlank)
 
