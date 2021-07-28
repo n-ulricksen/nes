@@ -15,6 +15,8 @@ type Cartridge struct {
 	chrMem []byte // Character memory (CHR)
 
 	mapper Mapper // Cartridge mapper used to configure CPU/PPU read/write addresses.
+
+	mirroring MirrorMode
 }
 
 // iNES file header
@@ -97,6 +99,8 @@ func NewCartridge(filepath string) *Cartridge {
 		log.Fatalf("Unable to read CHR memory\n%v\n", err)
 	}
 
+	// TODO: determine and set mirroring mode
+
 	// Determine if PlayChoice INST-ROM (bit 2 of mapper2 flags).
 	if (header.Mapper2 & (0x1 << 2)) > 0 {
 		// 8192-bytes
@@ -133,3 +137,12 @@ func (c *Cartridge) ppuWrite(addr uint16, data byte) {
 	mappedAddr := c.mapper.ppuMapWrite(addr)
 	c.chrMem[mappedAddr] = data
 }
+
+type MirrorMode int
+
+const (
+	mirrorHorizontal MirrorMode = iota
+	mirrorVertical
+	mirrorOnescreenLo
+	mirrorOnescreenHi
+)

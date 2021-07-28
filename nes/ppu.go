@@ -20,6 +20,12 @@ const (
 	nameTblAddr    uint16 = 0x2000
 	nameTblAddrEnd uint16 = 0x3EFF
 
+	// Relative nametable address
+	nameTbl0 uint16 = 0x0000
+	nameTbl1 uint16 = 0x0400
+	nameTbl2 uint16 = 0x0800
+	nameTbl3 uint16 = 0x0C00
+
 	paletteAddr    uint16 = 0x3F00
 	paletteAddrEnd uint16 = 0x3FFF
 )
@@ -217,6 +223,8 @@ func (p *Ppu) ppuRead(addr uint16) byte {
 		//data = p.patternTable[tbl][idx]
 		data = p.Cart.ppuRead(addr)
 	} else if addr >= nameTblAddr && addr <= nameTblAddrEnd {
+		// Nametable read with the correct mirroring set by the game cartridge
+		data = p.nametableRead(addr)
 	} else if addr >= paletteAddr && addr <= paletteAddrEnd {
 		// Mirrored addresses
 		addr &= 0x1F
@@ -238,6 +246,8 @@ func (p *Ppu) ppuWrite(addr uint16, data byte) {
 		//p.patternTable[tbl][idx] = data
 		p.Cart.ppuWrite(addr, data)
 	} else if addr >= nameTblAddr && addr <= nameTblAddrEnd {
+		// Nametable write with the correct mirroring set by the game cartridge
+		p.nametableWrite(addr, data)
 	} else if addr >= paletteAddr && addr <= paletteAddrEnd {
 		// Mirrored addresses
 		addr &= 0x1F
@@ -246,6 +256,78 @@ func (p *Ppu) ppuWrite(addr uint16, data byte) {
 		}
 		p.paletteTable[addr] = data
 	}
+}
+
+// Gets a byte of data from the nametable memory using a given memory address.
+func (p *Ppu) nametableRead(addr uint16) byte {
+	var data byte
+
+	// Get an address relative to the nametable space (0x0000-0x0FFF)
+	addr &= 0x0FFF
+	nameTblId := getNametableId(addr & 0x0FFF)
+
+	switch nameTblId {
+	case 0:
+		data = p.nameTable[0][addr&0x3FF]
+	case 1:
+		if p.Cart.mirroring == mirrorHorizontal {
+			data = p.nameTable[0][addr&0x3FF] // mirror
+		} else if p.Cart.mirroring == mirrorVertical {
+			data = p.nameTable[1][addr&0x3FF]
+		}
+	case 2:
+		if p.Cart.mirroring == mirrorHorizontal {
+			data = p.nameTable[1][addr&0x3FF]
+		} else if p.Cart.mirroring == mirrorVertical {
+			data = p.nameTable[0][addr&0x3FF] // mirror
+		}
+	case 3:
+		data = p.nameTable[1][addr&0x3FF] // always mirror
+	}
+
+	return data
+}
+
+func (p *Ppu) nametableWrite(addr uint16, data byte) {
+	// Relative nametable address
+	addr &= 0x0FFF
+	nameTblId := getNametableId(addr & 0x0FFF)
+
+	switch nameTblId {
+	case 0:
+		p.nameTable[0][addr&0x3FF] = data
+	case 1:
+		if p.Cart.mirroring == mirrorHorizontal {
+			p.nameTable[0][addr&0x3FF] = data // mirror
+		} else if p.Cart.mirroring == mirrorVertical {
+			p.nameTable[1][addr&0x3FF] = data
+		}
+	case 2:
+		if p.Cart.mirroring == mirrorHorizontal {
+			p.nameTable[1][addr&0x3FF] = data
+		} else if p.Cart.mirroring == mirrorVertical {
+			p.nameTable[0][addr&0x3FF] = data // mirror
+		}
+	case 3:
+		p.nameTable[1][addr&0x3FF] = data // always mirror
+	}
+}
+
+// Returns the nametable ID (0, 1, 2, 3) for the given relative memory address.
+func getNametableId(addr uint16) byte {
+	var id byte
+
+	if addr >= nameTbl0 && addr < nameTbl1 {
+		id = 0
+	} else if addr >= nameTbl1 && addr < nameTbl2 {
+		id = 1
+	} else if addr >= nameTbl2 && addr < nameTbl3 {
+		id = 2
+	} else {
+		id = 3
+	}
+
+	return id
 }
 
 // LoadPalette loads an NES palette from the specified file path, and returns
