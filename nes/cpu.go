@@ -198,8 +198,11 @@ func (cpu *Cpu6502) setFlag(f SF6502, b bool) {
 
 ////////////////////////////////////////////////////////////////
 // Interrupts
-const resetVectAddr = 0xFFFC
-const irqVectAddr = 0xFFFE
+const (
+	resetVectAddr uint16 = 0xFFFC
+	irqVectAddr          = 0xFFFE
+	nmiVectAddr          = 0xFFFA
+)
 
 func (cpu *Cpu6502) Reset() {
 	// Clear registers, reset stack pointer
@@ -209,7 +212,7 @@ func (cpu *Cpu6502) Reset() {
 	cpu.Status = 0x00 | byte(StatusFlagX) | byte(StatusFlagI)
 	cpu.Sp = 0xFD
 
-	// Get the program counter from the reset vector location in RAM.
+	// Set the program counter to the value at the reset vector address.
 	cpu.Pc = cpu.readWord(resetVectAddr)
 
 	// Clear internal variables.
@@ -225,8 +228,50 @@ func (cpu *Cpu6502) Reset() {
 }
 
 // Interrupt Request
-func (cpu *Cpu6502) IRQ() {}
-func (cpu *Cpu6502) NMI() {}
+func (cpu *Cpu6502) IRQ() {
+	// Push program counter to the stack
+	pcHi := byte((cpu.Pc >> 8) & 0x00FF)
+	pcLo := byte(cpu.Pc & 0x00FF)
+	cpu.stackPush(pcHi)
+	cpu.stackPush(pcLo)
+
+	// Set flags: interrupt, break, and unused
+	cpu.setFlag(StatusFlagI, true)
+	cpu.setFlag(StatusFlagB, true)
+	cpu.setFlag(StatusFlagX, true)
+
+	// Push status flag to stack
+	cpu.stackPush(cpu.Status)
+
+	// Set program counter to value stored at IRQ vector address
+	cpu.Pc = cpu.readWord(irqVectAddr)
+
+	// Spend time on IRQ
+	cpu.Cycles = 7
+}
+
+// Non-maskable Interrupt Request
+func (cpu *Cpu6502) NMI() {
+	// Push program counter to the stack
+	pcHi := byte((cpu.Pc >> 8) & 0x00FF)
+	pcLo := byte(cpu.Pc & 0x00FF)
+	cpu.stackPush(pcHi)
+	cpu.stackPush(pcLo)
+
+	// Set flags: interrupt, break, and unused
+	cpu.setFlag(StatusFlagI, true)
+	cpu.setFlag(StatusFlagB, true)
+	cpu.setFlag(StatusFlagX, true)
+
+	// Push status flag to stack
+	cpu.stackPush(cpu.Status)
+
+	// Set program counter to value stored at NMI vector address
+	cpu.Pc = cpu.readWord(nmiVectAddr)
+
+	// Spend time on NMI
+	cpu.Cycles = 8
+}
 
 // Cycle represents one CPU clock cycle.
 func (cpu *Cpu6502) Clock() {
