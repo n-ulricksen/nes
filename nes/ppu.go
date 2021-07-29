@@ -52,6 +52,8 @@ type Ppu struct {
 	cycle         int  // Cycle count in the current scanline
 	frameComplete bool // Whether or not the current frame is finished rendering
 
+	frames int // Total number of rendered frames
+
 	dataBuffer byte // PPU reads are delayed 1 cycle, so we buffer the byte being read.
 
 	// "Loopy" internal registers
@@ -79,6 +81,8 @@ func NewPpu() *Ppu {
 		cycle:         0,
 		frameComplete: true,
 
+		frames: 0,
+
 		vRam: new(PpuLoopyReg),
 		tRam: new(PpuLoopyReg),
 
@@ -100,10 +104,9 @@ func (p *Ppu) ConnectDisplay(d *Display) {
 }
 
 // PPU clock cycle.
-// 1 frame = 262 scanlines
-// 1 scanline = 341 PPU clock cycles
+// 1 frame = 262 scanlines (-1 - 260)
+// 1 scanline = 341 PPU clock cycles (0 - 340)
 func (p *Ppu) Clock() {
-	p.cycle++
 
 	// Rendering visible scanlines. We must include scanline -1 here because
 	// that is when the data used in scanline 0 is fetched.
@@ -112,8 +115,54 @@ func (p *Ppu) Clock() {
 			p.ppuStatus.clearFlag(statusVBlank)
 		}
 
-		// TODO: repeated cycles (1-256)
+		// Last cycle of the scanline -1 is skipped every odd rendered
+		// frame. We skip this 0 cycle every other frame to emulate this
+		// behavior.
+		if p.scanline == 0 && p.cycle == 0 {
+			if p.frames%2 == 1 {
+				p.cycle++
+			}
+		}
 
+		// Repeated cycles - these memory accesses take 2 cycles on a real NES
+		// PPU, but we will perform them in one for emulation.
+		if (p.cycle >= 1 && p.cycle <= 256) || (p.cycle >= 321 && p.cycle <= 336) {
+			switch (p.cycle - 1) % 8 {
+			case 0:
+				// Nametable byte
+			case 2:
+				// Attribute table byte
+			case 4:
+				// Pattern table tile low
+			case 6:
+				// Pattern table tile high
+			case 7:
+				// Increment horizontal scroll
+			}
+		}
+
+		if p.cycle == 256 {
+			// Increment vertical scroll
+		}
+
+		// End of visible scanline
+		if p.cycle == 257 {
+			// Transfer x position (*vRam.x = *tRam.x)
+		}
+
+		// Unused nametable fetches at the end of each scnaline
+		if p.cycle == 337 || p.cycle == 339 {
+			// Useless nametable fetches
+		}
+
+		// End of visible frame
+		if p.scanline == -1 && p.cycle >= 280 && p.cycle <= 304 {
+			// Transfer y position (*vRam.y = *tRam.y)
+		}
+	}
+
+	// Post-render scanline - PPU idle
+	if p.scanline == 240 {
 	}
 
 	// Enter vertical blank
@@ -125,17 +174,22 @@ func (p *Ppu) Clock() {
 		}
 	}
 
+	// Scanlines 241-260 don't do much of anything.
+
 	// Draw static to the screen for now (random color pixel)
 	//i := uint8(rand.Intn(0x40))
 	//p.display.DrawPixel(p.cycle-1, p.scanline, p.paletteRGBA[i])
 
+	p.cycle++
 	if p.cycle >= 341 {
 		p.cycle = 0
 		p.scanline++
 
-		if p.scanline >= 262 {
+		// Scanline 261 is referred to scanline -1
+		if p.scanline >= 261 {
 			p.scanline = -1
 			p.frameComplete = true
+			p.frames++
 
 			p.display.UpdateScreen()
 		}
