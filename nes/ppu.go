@@ -52,9 +52,13 @@ type Ppu struct {
 	cycle         int  // Cycle count in the current scanline
 	frameComplete bool // Whether or not the current frame is finished rendering
 
-	addrLatch  byte   // Address latch to signal high or low byte - used by PPUSCROLL and PPUADDR.
-	dataBuffer byte   // PPU reads are delayed 1 cycle, so we buffer the byte being read.
-	vramAddr   uint16 // Used to store the compiled address used for PPU data reads/writes.
+	dataBuffer byte // PPU reads are delayed 1 cycle, so we buffer the byte being read.
+
+	// "Loopy" internal registers
+	vRam        *PpuLoopyReg
+	tRam        *PpuLoopyReg // Temporary ram address
+	scrollFineX byte         // internal fine X scroll (3 bits)
+	addrLatch   byte         // Address latch to signal high or low byte - used by PPUSCROLL and PPUADDR.
 
 	display *Display
 
@@ -74,6 +78,9 @@ func NewPpu() *Ppu {
 		scanline:      0,
 		cycle:         0,
 		frameComplete: true,
+
+		vRam: new(PpuLoopyReg),
+		tRam: new(PpuLoopyReg),
 
 		paletteRGBA: loadPalette("./palettes/ntscpalette.pal"),
 	}
@@ -98,9 +105,15 @@ func (p *Ppu) ConnectDisplay(d *Display) {
 func (p *Ppu) Clock() {
 	p.cycle++
 
-	// Enter rendering mode
-	if p.scanline == -1 && p.cycle == 1 {
-		p.ppuStatus.clearFlag(statusVBlank)
+	// Rendering visible scanlines. We must include scanline -1 here because
+	// that is when the data used in scanline 0 is fetched.
+	if p.scanline >= -1 && p.scanline < 240 {
+		if p.scanline == -1 && p.cycle == 1 {
+			p.ppuStatus.clearFlag(statusVBlank)
+		}
+
+		// TODO: repeated cycles (1-256)
+
 	}
 
 	// Enter vertical blank
@@ -113,8 +126,8 @@ func (p *Ppu) Clock() {
 	}
 
 	// Draw static to the screen for now (random color pixel)
-	i := uint8(rand.Intn(0x40))
-	p.display.DrawPixel(p.cycle-1, p.scanline, p.paletteRGBA[i])
+	//i := uint8(rand.Intn(0x40))
+	//p.display.DrawPixel(p.cycle-1, p.scanline, p.paletteRGBA[i])
 
 	if p.cycle >= 341 {
 		p.cycle = 0
@@ -151,11 +164,11 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 		// stored in a buffer on the PPU. Reading from VRAM returns the current
 		// value stored on the buffer.
 		data = p.dataBuffer
-		p.dataBuffer = p.ppuRead(p.vramAddr)
+		p.dataBuffer = p.ppuRead(p.vRam.value())
 
 		// The buffer is not used when reading palette data. The data is instead
 		// placed directly onto the bus, bypassing the PPU data buffer.
-		if p.vramAddr >= paletteAddr {
+		if p.vRam.value() >= paletteAddr {
 			data = p.dataBuffer
 		}
 
@@ -165,9 +178,9 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 		// 	1: increment by 32 (down)
 		inc := p.ppuCtrl.getFlag(ctrlVramInc)
 		if inc == 0 {
-			p.vramAddr += 1
+			*p.vRam += 1
 		} else {
-			p.vramAddr += 32
+			*p.vRam += 32
 		}
 	}
 
@@ -179,24 +192,54 @@ func (p *Ppu) cpuWrite(addr uint16, data byte) {
 	switch addr {
 	case 0x0000: // Controller
 		*p.ppuCtrl = PpuReg(data)
+
+		// 2 LSB used to set TRAM nametable bits.
+		p.tRam.setNametable(data & 0b11)
 	case 0x0001: // Mask
 		*p.ppuMask = PpuReg(data)
 	case 0x0002: // Status
 	case 0x0003: // OAM Address
 	case 0x0004: // OAM Data
 	case 0x0005: // Scroll
+		if p.addrLatch == 0 {
+			// First write (coarse/fine X scroll values)
+			coarseX := (data & (0b11111 << 3)) >> 3
+			fineX := data & 0b111
+			p.tRam.setCoarseX(coarseX)
+			p.scrollFineX = fineX
+
+			p.addrLatch = 1
+		} else {
+			// Second write (coarse/fine Y scroll values)
+			coarseY := (data & (0b11111 << 3)) >> 3
+			fineY := data & 0b111
+			p.tRam.setCoarseY(coarseY)
+			p.tRam.setFineY(fineY)
+
+			p.addrLatch = 0
+		}
 	case 0x0006: // Address
 		if p.addrLatch == 0 {
 			// First write (high byte)
-			p.vramAddr = uint16(data)<<8 | p.vramAddr&0x00FF
+			setBits := uint16(data&0b111111) << 8
+			*p.tRam = PpuLoopyReg(setBits) | *p.tRam&0xFF
+
+			// First read also clears bit 14 of tRam
+			*p.tRam &^= PpuLoopyReg(0b1 << 14)
+
 			p.addrLatch = 1
 		} else {
 			// Second write (low byte)
-			p.vramAddr = p.vramAddr&0xFF00 | uint16(data)
+			setBits := uint16(data)
+			*p.tRam = (*p.tRam & 0xFF00) | PpuLoopyReg(setBits)
+
+			// Second read transfers tRam to vRam
+			*p.vRam = *p.tRam
+
 			p.addrLatch = 0
 		}
 	case 0x0007: // Data
-		p.ppuWrite(p.vramAddr, data)
+		p.ppuWrite(p.vRam.value(), data)
 
 		// Accessing this port increments the VRAM address.
 		// Bit 2 of PPUCTRL determines the amount to increment by:
@@ -204,9 +247,9 @@ func (p *Ppu) cpuWrite(addr uint16, data byte) {
 		// 	1: increment by 32 (down)
 		inc := p.ppuCtrl.getFlag(ctrlVramInc)
 		if inc == 0 {
-			p.vramAddr += 1
+			*p.vRam += 1
 		} else {
-			p.vramAddr += 32
+			*p.vRam += 32
 		}
 	}
 }
@@ -264,7 +307,7 @@ func (p *Ppu) nametableRead(addr uint16) byte {
 
 	// Get an address relative to the nametable space (0x0000-0x0FFF)
 	addr &= 0x0FFF
-	nameTblId := getNametableId(addr & 0x0FFF)
+	nameTblId := getNametableId(addr)
 
 	switch nameTblId {
 	case 0:
@@ -288,10 +331,12 @@ func (p *Ppu) nametableRead(addr uint16) byte {
 	return data
 }
 
+// Write data to the appropriate nametable, determined by the address and what
+// mirroring mode is being used by the cartridge.
 func (p *Ppu) nametableWrite(addr uint16, data byte) {
 	// Relative nametable address
 	addr &= 0x0FFF
-	nameTblId := getNametableId(addr & 0x0FFF)
+	nameTblId := getNametableId(addr)
 
 	switch nameTblId {
 	case 0:
