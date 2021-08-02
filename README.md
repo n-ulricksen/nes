@@ -6,4 +6,6 @@ I had a bunch of fun writing a Chip-8 emulator earlier this year. Now time for t
 
 ![demo](media/nes_emu.gif)
 
-- 6502 CPU is almost complete. I am working through tests to finish any remaining bugs.
+- 6502 CPU is ~~almost~~ complete. 
+
+- Currently working on the PPU (picture processing unit).
