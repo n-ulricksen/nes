@@ -90,3 +90,14 @@ func (r *PpuLoopyReg) getNametable() byte {
 func (r *PpuLoopyReg) getFineY() byte {
 	return byte((*r & loopyFineY) >> 12)
 }
+
+// Swap to the other horizontal nametable.
+// See: https://wiki.nesdev.com/w/index.php/PPU_scrolling#Wrapping_around
+func (r *PpuLoopyReg) toggleNametableH() {
+	*r ^= 0x0400
+}
+
+// Swap to the other vertical nametable.
+func (r *PpuLoopyReg) toggleNametableV() {
+	*r ^= 0x0800
+}
