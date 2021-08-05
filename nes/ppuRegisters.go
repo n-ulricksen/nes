@@ -47,7 +47,7 @@ func (r *PpuReg) toggleFlag(flag PpuRegFlag) {
 	*r ^= PpuReg(flag)
 }
 
-func (r *PpuReg) getFlag(flag PpuRegFlag) PpuRegFlag {
+func (r *PpuReg) getFlag(flag PpuRegFlag) byte {
 	if (*r & PpuReg(flag)) == 0 {
 		return 0
 	}
