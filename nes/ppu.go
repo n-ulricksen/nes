@@ -68,6 +68,12 @@ type Ppu struct {
 	nextBgTileLo byte
 	nextBgTileHi byte
 
+	// Shifters used for fine x scrolling
+	bgPatternShifterLo uint16
+	bgPatternShifterHi uint16
+	bgAttribShifterLo  uint16
+	bgAttribShifterHi  uint16
+
 	display *Display
 
 	paletteRGBA [paletteSize]color.RGBA
@@ -134,10 +140,14 @@ func (p *Ppu) Clock() {
 		// PPU, but we will perform them in one for emulation.
 		// Reference:
 		//   https://wiki.nesdev.com/w/index.php/PPU_scrolling#Tile_and_attribute_fetching
-		if (p.cycle >= 1 && p.cycle <= 256) || (p.cycle >= 321 && p.cycle <= 336) {
+		if (p.cycle >= 2 && p.cycle <= 256) || (p.cycle >= 321 && p.cycle <= 336) {
+			p.updateShifters()
+
 			var fetchAddr uint16
 			switch (p.cycle - 1) % 8 {
 			case 0:
+				p.loadBackgroundShifters()
+
 				// Nametable byte
 				fetchAddr = nameTblAddr | (p.vRam.value() & 0x0FFF)
 				p.nextBgTileId = p.ppuRead(fetchAddr)
@@ -158,6 +168,7 @@ func (p *Ppu) Clock() {
 				p.nextBgTileHi = p.ppuRead(fetchAddr)
 			case 7:
 				// Increment horizontal scroll
+				// XXX: we may have to check that rendering mode is enabled
 				if p.vRam.getCoarseX() == 31 {
 					// Wrap around (nametable is 32 tiles wide)
 					p.vRam.setCoarseX(0)
@@ -171,21 +182,29 @@ func (p *Ppu) Clock() {
 
 		if p.cycle == 256 {
 			// Increment vertical scroll
+			// XXX: we may have to check that rendering mode is enabled
 		}
 
-		// End of visible scanline
+		// End of visible scanline, transfer x position from tRam to vRam
 		if p.cycle == 257 {
-			// Transfer x position (*vRam.x = *tRam.x)
+			p.updateShifters()
+			// XXX: we may have to check that rendering mode is enabled
+			p.vRam.setNametable(p.tRam.getNametable() & 0b01)
+			p.vRam.setCoarseX(p.tRam.getCoarseX())
 		}
 
 		// Unused nametable fetches at the end of each scnaline
 		if p.cycle == 337 || p.cycle == 339 {
-			// Useless nametable fetches
+			fetchAddr := nameTblAddr | (p.vRam.value() & 0x0FFF)
+			p.nextBgTileId = p.ppuRead(fetchAddr)
 		}
 
-		// End of visible frame
+		// End of visible frame, transfer y position from tRam to vRam
 		if p.scanline == -1 && p.cycle >= 280 && p.cycle <= 304 {
-			// Transfer y position (*vRam.y = *tRam.y)
+			// XXX: we may have to check that rendering mode is enabled
+			p.vRam.setNametable(p.tRam.getNametable() & 0b10)
+			p.vRam.setCoarseY(p.tRam.getCoarseY())
+			p.vRam.setFineY(p.tRam.getFineY())
 		}
 	}
 
@@ -203,6 +222,25 @@ func (p *Ppu) Clock() {
 	}
 
 	// Scanlines 241-260 don't do much of anything.
+
+	// Get the palette and pixel vlues used to lookup the color to render at
+	// this scanline/pixel.
+	var bgPixel, bgPalette byte
+
+	if p.ppuMask.getFlag(maskBgShow) > 0 {
+		bitMux := uint16(0x8000 >> p.scrollFineX)
+
+		pixelLo := byte(p.bgAttribShifterLo & bitMux)
+		pixelHi := byte(p.bgAttribShifterHi & bitMux)
+		bgPixel = (pixelHi << 1) & pixelLo
+
+		paletteLo := byte(p.bgAttribShifterLo & bitMux)
+		paletteHi := byte(p.bgAttribShifterHi & bitMux)
+		bgPalette = (paletteHi << 1) & paletteLo
+	}
+
+	p.display.DrawPixel(p.cycle-1, p.scanline,
+		p.getColorFromPalette(bgPalette, bgPixel))
 
 	// Draw static to the screen for now (random color pixel)
 	//i := uint8(rand.Intn(0x40))
@@ -477,6 +515,48 @@ func loadPalette(filepath string) [paletteSize]color.RGBA {
 	return palette
 }
 
+// Get a color from the given palette ID, offset by the given pixel value.
+func (p *Ppu) getColorFromPalette(palette, pixel byte) color.RGBA {
+	idx := p.ppuRead(paletteAddr + uint16((palette<<2)+pixel))
+
+	return p.paletteRGBA[idx&0x3F]
+}
+
+// Update the shifters used to implement fine x scrolling.
+func (p *Ppu) updateShifters() {
+	// Pattern table shifters
+	p.bgPatternShifterLo <<= 1
+	p.bgPatternShifterHi <<= 1
+
+	// Palette attribute shifters
+	p.bgAttribShifterLo <<= 1
+	p.bgAttribShifterHi <<= 1
+}
+
+// Load the background shifters with background tile pattern and attributes.
+func (p *Ppu) loadBackgroundShifters() {
+	// Tile patterns
+	p.bgPatternShifterLo = (p.bgPatternShifterLo & 0xFF00) | uint16(p.nextBgTileLo)
+	p.bgPatternShifterHi = (p.bgPatternShifterHi & 0xFF00) | uint16(p.nextBgTileHi)
+
+	// Tile attributes
+	var attrLo byte
+
+	if p.nextBgAttr&0b01 > 0 {
+		attrLo = 0xFF
+	} else {
+		attrLo = 0x00
+	}
+	p.bgAttribShifterLo = (p.bgAttribShifterLo & 0xFF00) | uint16(attrLo)
+
+	if p.nextBgAttr&0b10 > 0 {
+		attrLo = 0xFF
+	} else {
+		attrLo = 0x00
+	}
+	p.bgAttribShifterHi = (p.bgAttribShifterHi & 0xFF00) | uint16(attrLo)
+}
+
 // Convenience functions for development.
 
 // Pattern tables are 16x16 grids of tiles or sprites. Each tile is 8x8 pixels
@@ -517,10 +597,4 @@ func (p *Ppu) GetPatternTable(i int) *image.RGBA {
 	}
 
 	return rgba
-}
-
-func (p *Ppu) getColorFromPalette(palette, pixel byte) color.RGBA {
-	idx := p.ppuRead(paletteAddr + uint16((palette<<2)+pixel))
-
-	return p.paletteRGBA[idx&0x3F]
 }
