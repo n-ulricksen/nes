@@ -62,6 +62,12 @@ type Ppu struct {
 	scrollFineX byte         // internal fine X scroll (3 bits)
 	addrLatch   byte         // Address latch to signal high or low byte - used by PPUSCROLL and PPUADDR.
 
+	// Tile/attribute fetching
+	nextBgTileId byte
+	nextBgAttr   byte
+	nextBgTileLo byte
+	nextBgTileHi byte
+
 	display *Display
 
 	paletteRGBA [paletteSize]color.RGBA
@@ -126,18 +132,40 @@ func (p *Ppu) Clock() {
 
 		// Repeated cycles - these memory accesses take 2 cycles on a real NES
 		// PPU, but we will perform them in one for emulation.
+		// Reference:
+		//   https://wiki.nesdev.com/w/index.php/PPU_scrolling#Tile_and_attribute_fetching
 		if (p.cycle >= 1 && p.cycle <= 256) || (p.cycle >= 321 && p.cycle <= 336) {
+			var fetchAddr uint16
 			switch (p.cycle - 1) % 8 {
 			case 0:
 				// Nametable byte
+				fetchAddr = nameTblAddr | (p.vRam.value() & 0x0FFF)
+				p.nextBgTileId = p.ppuRead(fetchAddr)
 			case 2:
 				// Attribute table byte
+				fetchAddr = 0x23C0 | (p.vRam.value() & 0x0C00) |
+					((p.vRam.value() >> 4) & 0x38) | ((p.vRam.value() >> 2) & 0x07)
+				p.nextBgAttr = p.ppuRead(fetchAddr)
 			case 4:
 				// Pattern table tile low
+				fetchAddr = uint16(p.ppuCtrl.getFlag(ctrlBgPatternTbl))<<12 |
+					uint16(p.nextBgTileId)<<4 | uint16(p.vRam.getFineY()) + 0x0
+				p.nextBgTileLo = p.ppuRead(fetchAddr)
 			case 6:
 				// Pattern table tile high
+				fetchAddr = uint16(p.ppuCtrl.getFlag(ctrlBgPatternTbl))<<12 |
+					uint16(p.nextBgTileId)<<4 | uint16(p.vRam.getFineY()) + 0x8
+				p.nextBgTileHi = p.ppuRead(fetchAddr)
 			case 7:
 				// Increment horizontal scroll
+				if p.vRam.getCoarseX() == 31 {
+					// Wrap around (nametable is 32 tiles wide)
+					p.vRam.setCoarseX(0)
+					p.vRam.toggleNametableH()
+				} else {
+					// Course X is last bits of vRam address
+					*p.vRam += 1
+				}
 			}
 		}
 
