@@ -76,9 +76,17 @@ func (r *PpuLoopyReg) setFineY(val byte) {
 }
 
 func (r *PpuLoopyReg) getCoarseX() byte {
-	return byte(*r & PpuLoopyReg(loopyCoarseX))
+	return byte(*r & loopyCoarseX)
 }
 
-func (r *PpuLoopyReg) getCoarseY() byte   { return 0 }
-func (r *PpuLoopyReg) getNametable() byte { return 0 }
-func (r *PpuLoopyReg) getFineY() byte     { return 0 }
+func (r *PpuLoopyReg) getCoarseY() byte {
+	return byte((*r & loopyCoarseY) >> 5)
+}
+
+func (r *PpuLoopyReg) getNametable() byte {
+	return byte((*r & loopyNametable) >> 10)
+}
+
+func (r *PpuLoopyReg) getFineY() byte {
+	return byte((*r & loopyFineY) >> 12)
+}
