@@ -49,10 +49,10 @@ type Ppu struct {
 
 	nmi bool // Set true to signal a non-maskable interrupt
 
-	// Intertal PPU variables
+	// Internal PPU variables
 	scanline      int  // Scanline count in the current frame
 	cycle         int  // Cycle count in the current scanline
-	frameComplete bool // Whether or not the current frame is finished rendering
+	frameComplete bool // Whether the current frame is finished rendering
 
 	frames int // Total number of rendered frames
 
