@@ -1,11 +1,13 @@
 package nes
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"os"
 	"time"
 )
 
@@ -77,9 +79,12 @@ type Ppu struct {
 	display *Display
 
 	paletteRGBA [paletteSize]color.RGBA
+
+	logger *log.Logger
 }
 
 func NewPpu() *Ppu {
+
 	return &Ppu{
 		nameTable:    [2][1024]byte{},
 		paletteTable: [32]byte{},
@@ -99,6 +104,8 @@ func NewPpu() *Ppu {
 		tRam: new(PpuLoopyReg),
 
 		paletteRGBA: loadPalette("./palettes/ntscpalette.pal"),
+
+		logger: newPpuLogger(),
 	}
 }
 
@@ -113,6 +120,17 @@ func (p *Ppu) ConnectCartridge(c *Cartridge) {
 
 func (p *Ppu) ConnectDisplay(d *Display) {
 	p.display = d
+}
+
+func newPpuLogger() *log.Logger {
+	now := time.Now()
+	logFile := fmt.Sprintf("./logs/ppu%s.log", now.Format("20060102-150405"))
+	f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE, 0664)
+	if err != nil {
+		log.Fatal("Unable to create PPU log file...\n", err)
+	}
+
+	return log.New(f, "", 0)
 }
 
 // PPU clock cycle.
@@ -140,7 +158,7 @@ func (p *Ppu) Clock() {
 		// PPU, but we will perform them in one for emulation.
 		// Reference:
 		//   https://wiki.nesdev.com/w/index.php/PPU_scrolling#Tile_and_attribute_fetching
-		if (p.cycle >= 2 && p.cycle <= 256) || (p.cycle >= 321 && p.cycle <= 336) {
+		if (p.cycle >= 2 && p.cycle <= 257) || (p.cycle >= 321 && p.cycle <= 337) {
 			p.updateShifters()
 
 			var fetchAddr uint16
@@ -156,6 +174,15 @@ func (p *Ppu) Clock() {
 				fetchAddr = 0x23C0 | (p.vRam.value() & 0x0C00) |
 					((p.vRam.value() >> 4) & 0x38) | ((p.vRam.value() >> 2) & 0x07)
 				p.nextBgAttr = p.ppuRead(fetchAddr)
+
+				// TODO: figure this out and document it
+				if (p.vRam.getCoarseY() & 0x2) > 0 {
+					p.nextBgAttr >>= 4
+				}
+				if (p.vRam.getCoarseX() & 0x2) > 0 {
+					p.nextBgAttr >>= 2
+				}
+				p.nextBgAttr &= 0x3
 			case 4:
 				// Pattern table tile low
 				fetchAddr = uint16(p.ppuCtrl.getFlag(ctrlBgPatternTbl))<<12 |
@@ -168,29 +195,33 @@ func (p *Ppu) Clock() {
 				p.nextBgTileHi = p.ppuRead(fetchAddr)
 			case 7:
 				// Increment horizontal scroll
-				// XXX: we may have to check that rendering mode is enabled
-				if p.vRam.getCoarseX() == 31 {
-					// Wrap around (nametable is 32 tiles wide)
-					p.vRam.setCoarseX(0)
-					p.vRam.toggleNametableH()
-				} else {
-					// Course X is last bits of vRam address
-					*p.vRam += 1
+				if p.shouldRender() {
+					if p.vRam.getCoarseX() == 31 {
+						// Wrap around (nametable is 32 tiles wide)
+						p.vRam.setCoarseX(0)
+						p.vRam.toggleNametableH()
+					} else {
+						// Course X is last bits of vRam address
+						*p.vRam += 1
+					}
+
 				}
 			}
 		}
 
 		if p.cycle == 256 {
-			// Increment vertical scroll
-			// XXX: we may have to check that rendering mode is enabled
+			if p.shouldRender() {
+				p.incrementVerticalScroll()
+			}
 		}
 
 		// End of visible scanline, transfer x position from tRam to vRam
 		if p.cycle == 257 {
-			p.updateShifters()
-			// XXX: we may have to check that rendering mode is enabled
-			p.vRam.setNametable(p.tRam.getNametable() & 0b01)
-			p.vRam.setCoarseX(p.tRam.getCoarseX())
+			p.loadBackgroundShifters()
+			if p.shouldRender() {
+				p.vRam.setNametable(p.tRam.getNametable() & 0b01)
+				p.vRam.setCoarseX(p.tRam.getCoarseX())
+			}
 		}
 
 		// Unused nametable fetches at the end of each scnaline
@@ -201,10 +232,11 @@ func (p *Ppu) Clock() {
 
 		// End of visible frame, transfer y position from tRam to vRam
 		if p.scanline == -1 && p.cycle >= 280 && p.cycle <= 304 {
-			// XXX: we may have to check that rendering mode is enabled
-			p.vRam.setNametable(p.tRam.getNametable() & 0b10)
-			p.vRam.setCoarseY(p.tRam.getCoarseY())
-			p.vRam.setFineY(p.tRam.getFineY())
+			if p.shouldRender() {
+				p.vRam.setNametable(p.tRam.getNametable() & 0b10)
+				p.vRam.setCoarseY(p.tRam.getCoarseY())
+				p.vRam.setFineY(p.tRam.getFineY())
+			}
 		}
 	}
 
@@ -230,15 +262,26 @@ func (p *Ppu) Clock() {
 	if p.ppuMask.getFlag(maskBgShow) > 0 {
 		bitMux := uint16(0x8000 >> p.scrollFineX)
 
-		pixelLo := byte(p.bgAttribShifterLo & bitMux)
-		pixelHi := byte(p.bgAttribShifterHi & bitMux)
-		bgPixel = (pixelHi << 1) & pixelLo
+		var pixelLo, pixelHi byte
+		if p.bgPatternShifterLo&bitMux > 0 {
+			pixelLo = 1
+		}
+		if p.bgPatternShifterHi&bitMux > 0 {
+			pixelHi = 1
+		}
+		bgPixel = (pixelHi << 1) | pixelLo
 
-		paletteLo := byte(p.bgAttribShifterLo & bitMux)
-		paletteHi := byte(p.bgAttribShifterHi & bitMux)
-		bgPalette = (paletteHi << 1) & paletteLo
+		var paletteLo, paletteHi byte
+		if p.bgAttribShifterLo&bitMux > 0 {
+			paletteLo = 1
+		}
+		if p.bgAttribShifterHi&bitMux > 0 {
+			paletteHi = 1
+		}
+		bgPalette = (paletteHi << 1) | paletteLo
 	}
 
+	// Finally draw the correct color to the current pixel.
 	p.display.DrawPixel(p.cycle-1, p.scanline,
 		p.getColorFromPalette(bgPalette, bgPixel))
 
@@ -391,7 +434,7 @@ func (p *Ppu) ppuRead(addr uint16) byte {
 	} else if addr >= paletteAddr && addr <= paletteAddrEnd {
 		// Mirrored addresses
 		addr &= 0x1F
-		if addr == 0x3F10 || addr == 0x3F14 || addr == 0x3F18 || addr == 0x3F1C {
+		if addr == 0x0010 || addr == 0x0014 || addr == 0x0018 || addr == 0x001C {
 			addr -= 0x10
 		}
 		data = p.paletteTable[addr]
@@ -414,7 +457,7 @@ func (p *Ppu) ppuWrite(addr uint16, data byte) {
 	} else if addr >= paletteAddr && addr <= paletteAddrEnd {
 		// Mirrored addresses
 		addr &= 0x1F
-		if addr == 0x3F10 || addr == 0x3F14 || addr == 0x3F18 || addr == 0x3F1C {
+		if addr == 0x0010 || addr == 0x0014 || addr == 0x0018 || addr == 0x001C {
 			addr -= 0x10
 		}
 		p.paletteTable[addr] = data
@@ -522,6 +565,14 @@ func (p *Ppu) getColorFromPalette(palette, pixel byte) color.RGBA {
 	return p.paletteRGBA[idx&0x3F]
 }
 
+// Check whether the PPU is in render mode. This is set by the maskBgShow and
+// maskSpriteShow flags.
+func (p *Ppu) shouldRender() bool {
+	showBg := p.ppuMask.getFlag(maskBgShow) > 0
+	showSprites := p.ppuMask.getFlag(maskSpriteShow) > 0
+	return showBg || showSprites
+}
+
 // Update the shifters used to implement fine x scrolling.
 func (p *Ppu) updateShifters() {
 	// Pattern table shifters
@@ -555,6 +606,29 @@ func (p *Ppu) loadBackgroundShifters() {
 		attrLo = 0x00
 	}
 	p.bgAttribShifterHi = (p.bgAttribShifterHi & 0xFF00) | uint16(attrLo)
+}
+
+// Increment fine y scroll, overflowing to coarse y. Wrap around nametables
+// vertically.
+// TODO: make this readable?
+func (p *Ppu) incrementVerticalScroll() {
+	if p.vRam.getFineY() < 7 {
+		// Normal increment
+		*p.vRam += 0x1000
+	} else {
+		p.vRam.setFineY(0x0)
+
+		y := p.vRam.getCoarseY()
+		if y == 29 {
+			y = 0
+			p.vRam.toggleNametableV()
+		} else if y == 31 {
+			y = 0
+		} else {
+			y++
+		}
+		p.vRam.setCoarseY(y)
+	}
 }
 
 // Convenience functions for development.
