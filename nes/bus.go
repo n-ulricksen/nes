@@ -11,13 +11,17 @@ import (
 
 // Main bus used by the CPU.
 type Bus struct {
-	Cpu  *Cpu6502        // NES CPU.
-	Ppu  *Ppu            // Picture processing unit.
-	Ram  [64 * 1024]byte // 64kb RAM used for initial development.
-	Cart *Cartridge      // NES Cartridge.
-	Disp *Display
+	Cpu        *Cpu6502        // NES CPU.
+	Ppu        *Ppu            // Picture processing unit.
+	Ram        [64 * 1024]byte // 64kb RAM used for initial development.
+	Cart       *Cartridge      // NES Cartridge.
+	Controller *Controller     // NES Controller.
+	Disp       *Display
 
 	ClockCount int
+
+	isDebug   bool // Enable debug panel
+	isLogging bool // Enable logging
 }
 
 const (
@@ -40,15 +44,18 @@ const (
 	fps float64 = 30.0
 )
 
-func NewBus() *Bus {
+func NewBus(isDebug, isLogging bool) *Bus {
 	// Create a new CPU. Here we use a 6502.
 	cpu := NewCpu6502()
 
 	// Attach devices to the bus.
 	bus := &Bus{
-		Cpu: cpu,
-		Ppu: NewPpu(),
-		Ram: [64 * 1024]byte{},
+		Cpu:        cpu,
+		Ppu:        NewPpu(),
+		Ram:        [64 * 1024]byte{},
+		Controller: NewController(),
+		isDebug:    isDebug,
+		isLogging:  isLogging,
 	}
 
 	// Connect this bus to the cpu.
@@ -60,7 +67,7 @@ func NewBus() *Bus {
 // Run the NES.
 func (b *Bus) Run() {
 	// Create a PixelGL display for the PPU to render to.
-	display := NewDisplay()
+	display := NewDisplay(b.isDebug)
 	b.Disp = display
 
 	// PPU needs access to the display.
@@ -70,18 +77,22 @@ func (b *Bus) Run() {
 	interval := time.Duration(intervalInMilli) * time.Millisecond
 	fmt.Println("Frame refresh time:", interval)
 
-	ticker := time.NewTicker(interval)
-
-	// Use a time ticker to keep frames rendered steadily at a set FPS.
+	// Use a timer to keep frames rendered steadily at a set FPS.
+	var t time.Time
 	for !display.window.Closed() {
+		// Run 1 whole frame.
+		t = time.Now()
 		for !b.Ppu.frameComplete {
 			b.Clock()
 		}
 
-		b.DrawDebugPanel()
+		b.Controller.updateControllerInput(b.Disp.window)
 
-		<-ticker.C
-		ticker.Reset(interval)
+		if b.isDebug {
+			b.DrawDebugPanel()
+		}
+
+		time.Sleep(interval - time.Since(t))
 
 		// Prepare for new frame
 		b.Ppu.frameComplete = false

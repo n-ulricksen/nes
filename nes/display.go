@@ -24,6 +24,8 @@ type Display struct {
 	debugAtlas    *text.Atlas // Used to load the font
 	debugRegText  *text.Text  // CPU register printout
 	debugInstText *text.Text  // CPU instruction disassembly
+
+	isDebug bool // Debug mode enabled on the NES
 }
 
 const (
@@ -41,15 +43,21 @@ const (
 	debugResH float64 = gameH
 )
 
-func NewDisplay() *Display {
+func NewDisplay(isDebug bool) *Display {
 	rect := image.Rect(0, 0, int(nesResW), int(nesResH))
 	gameRgba := image.NewRGBA(rect)
+
 	rect = image.Rect(0, 0, int(debugResW), int(debugResH))
 	debugRgba := image.NewRGBA(rect)
 
+	screenW := gameW
+	if isDebug {
+		screenW += debugResW
+	}
+
 	config := pixelgl.WindowConfig{
 		Title:    "NES Emulator",
-		Bounds:   pixel.R(0, 0, gameW+debugResW, gameH),
+		Bounds:   pixel.R(0, 0, screenW, gameH),
 		Position: pixel.V(screenPosX, screenPosY),
 		VSync:    true,
 	}
@@ -82,6 +90,7 @@ func NewDisplay() *Display {
 		debugAtlas,
 		debugRegText,
 		debugInstText,
+		isDebug,
 	}
 }
 
@@ -123,9 +132,11 @@ func (d *Display) UpdateScreen() {
 	d.updateGameDisplay()
 
 	// Update debug panel as well.
-	d.updateDebugDisplay()
-	d.debugRegText.Draw(d.window, pixel.IM)
-	d.debugInstText.Draw(d.window, pixel.IM)
+	if d.isDebug {
+		d.updateDebugDisplay()
+		d.debugRegText.Draw(d.window, pixel.IM)
+		d.debugInstText.Draw(d.window, pixel.IM)
+	}
 
 	d.window.Update()
 }

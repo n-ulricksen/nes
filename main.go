@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 
@@ -13,13 +14,21 @@ import (
 	"golang.org/x/image/font/basicfont"
 )
 
+// Command line flags
+var (
+	flagDebug   bool
+	flagLogging bool
+)
+
 func main() {
+	parseFlags()
+
 	fmt.Println("Starting NES...")
-	nesEmulator := nes.NewBus()
+	nesEmulator := nes.NewBus(flagDebug, flagLogging)
 
 	// Load a test cartridge
-	//cart := nes.NewCartridge("./roms/DK.nes")
-	cart := nes.NewCartridge("./roms/SMB.nes")
+	cart := nes.NewCartridge("./roms/DK.nes")
+	//cart := nes.NewCartridge("./roms/SMB.nes")
 	//cart := nes.NewCartridge("./external_tests/nestest/nestest.nes")
 	nesEmulator.InsertCartridge(cart)
 
@@ -30,6 +39,13 @@ func main() {
 
 	//startDebugMode(nesEmulator)
 	pixelgl.Run(nesEmulator.Run)
+}
+
+func parseFlags() {
+	flag.BoolVar(&flagDebug, "d", false, "enable debug panel")
+	flag.BoolVar(&flagLogging, "l", false, "enable logging")
+
+	flag.Parse()
 }
 
 func startDebugMode(nesEmu *nes.Bus) {
