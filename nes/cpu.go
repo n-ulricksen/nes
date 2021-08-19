@@ -37,13 +37,15 @@ type Cpu6502 struct {
 	OpDiss string // Dissasembly for the current instruction, used for debug
 
 	Logger *log.Logger // CPU logging
+	state  string      // CPU register state
+	prevPc uint16      // Previous program counter
 }
 
 const (
 	stackBase uint16 = 0x0100
 )
 
-func NewCpu6502() *Cpu6502 {
+func NewCpu6502(isLogging bool) *Cpu6502 {
 	cpu := &Cpu6502{
 		Pc:     0x0000,
 		Sp:     0xFD,
@@ -62,14 +64,16 @@ func NewCpu6502() *Cpu6502 {
 	}
 
 	// Create log file.
-	now := time.Now()
-	logFile := fmt.Sprintf("./logs/cpu%s.log", now.Format("20060102-150405"))
-	f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE, 0664)
-	if err != nil {
-		log.Fatal("Unable to create CPU log file...\n", err)
-	}
+	if isLogging {
+		now := time.Now()
+		logFile := fmt.Sprintf("./logs/cpu%s.log", now.Format("20060102-150405"))
+		f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE, 0664)
+		if err != nil {
+			log.Fatal("Unable to create CPU log file...\n", err)
+		}
 
-	cpu.Logger = log.New(f, "", 0)
+		cpu.Logger = log.New(f, "", 0)
+	}
 
 	// Create the lookup table containing all the CPU instructions.
 	// Reference: http://archive.6502.org/datasheets/rockwell_r650x_r651x.pdf
@@ -281,9 +285,11 @@ func (cpu *Cpu6502) Clock() {
 		cpu.Opcode = cpu.read(cpu.Pc)
 
 		// Store CPU state for logging.
-		cpuState := fmt.Sprintf("\t\tA:%02X X:%02X Y:%02X P:%02X SP:%02X\tCYC:%d",
-			cpu.A, cpu.X, cpu.Y, cpu.Status, cpu.Sp, cpu.CycleCount)
-		oldpc := cpu.Pc
+		if cpu.bus.isLogging {
+			cpu.state = fmt.Sprintf("\t\tA:%02X X:%02X Y:%02X P:%02X SP:%02X\tCYC:%d",
+				cpu.A, cpu.X, cpu.Y, cpu.Status, cpu.Sp, cpu.CycleCount)
+			cpu.prevPc = cpu.Pc
+		}
 
 		// Lookup by opcode the instruction to be executed.
 		inst := cpu.InstLookup[cpu.Opcode]
@@ -304,11 +310,13 @@ func (cpu *Cpu6502) Clock() {
 		extraCycles2 := inst.Execute()
 
 		// Log CPU instructions.
-		var buf bytes.Buffer
-		buf.WriteString(fmt.Sprintf("%04X\t%02X - %s ", oldpc, cpu.Opcode, inst.Name))
-		buf.WriteString(cpuState)
-		cpu.Logger.Print(buf.String())
-		cpu.OpDiss = buf.String()
+		if cpu.bus.isLogging {
+			var buf bytes.Buffer
+			buf.WriteString(fmt.Sprintf("%04X\t%02X - %s ", cpu.prevPc, cpu.Opcode, inst.Name))
+			buf.WriteString(cpu.state)
+			cpu.Logger.Print(buf.String())
+			cpu.OpDiss = buf.String()
+		}
 
 		cpu.Cycles += (extraCycles1 & extraCycles2)
 	}

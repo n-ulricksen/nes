@@ -46,7 +46,7 @@ const (
 
 func NewBus(isDebug, isLogging bool) *Bus {
 	// Create a new CPU. Here we use a 6502.
-	cpu := NewCpu6502()
+	cpu := NewCpu6502(isLogging)
 
 	// Attach devices to the bus.
 	bus := &Bus{

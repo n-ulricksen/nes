@@ -104,8 +104,6 @@ func NewPpu() *Ppu {
 		tRam: new(PpuLoopyReg),
 
 		paletteRGBA: loadPalette("./palettes/ntscpalette.pal"),
-
-		logger: newPpuLogger(),
 	}
 }
 
@@ -122,6 +120,7 @@ func (p *Ppu) ConnectDisplay(d *Display) {
 	p.display = d
 }
 
+// For future use if PPU logging is needed.
 func newPpuLogger() *log.Logger {
 	now := time.Now()
 	logFile := fmt.Sprintf("./logs/ppu%s.log", now.Format("20060102-150405"))
