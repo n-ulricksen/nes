@@ -58,6 +58,7 @@ type Ppu struct {
 
 	dataBuffer byte // PPU reads are delayed 1 cycle, so we buffer the byte being read.
 
+	// Background Rendering ~~~~~~
 	// "Loopy" internal registers
 	vRam        *PpuLoopyReg
 	tRam        *PpuLoopyReg // Temporary ram address
@@ -75,6 +76,13 @@ type Ppu struct {
 	bgPatternShifterHi uint16
 	bgAttribShifterLo  uint16
 	bgAttribShifterHi  uint16
+	// ~~~~~
+
+	// Foreground Rendering ~~~~~~
+	// Primary OAM
+	// Secondary OAM
+
+	// ~~~~~
 
 	display *Display
 
@@ -84,7 +92,6 @@ type Ppu struct {
 }
 
 func NewPpu() *Ppu {
-
 	return &Ppu{
 		nameTable:    [2][1024]byte{},
 		paletteTable: [32]byte{},
@@ -136,7 +143,32 @@ func newPpuLogger() *log.Logger {
 // 1 frame = 262 scanlines (-1 - 260)
 // 1 scanline = 341 PPU clock cycles (0 - 340)
 func (p *Ppu) Clock() {
+	p.renderBackground()
+	p.renderForeground()
 
+	// Draw static to the screen for now (random color pixel)
+	//i := uint8(rand.Intn(0x40))
+	//p.display.DrawPixel(p.cycle-1, p.scanline, p.paletteRGBA[i])
+
+	p.cycle++
+	if p.cycle >= 341 {
+		p.cycle = 0
+		p.scanline++
+
+		// Scanline 261 is referred to scanline -1
+		if p.scanline >= 261 {
+			p.scanline = -1
+			p.frameComplete = true
+			p.frames++
+
+			p.display.UpdateScreen()
+		}
+	}
+}
+
+// PPU background rendering, 1 scanline/pixel at a time.
+// https://wiki.nesdev.com/w/index.php/PPU_rendering
+func (p *Ppu) renderBackground() {
 	// Rendering visible scanlines. We must include scanline -1 here because
 	// that is when the data used in scanline 0 is fetched.
 	if p.scanline >= -1 && p.scanline < 240 {
@@ -283,25 +315,10 @@ func (p *Ppu) Clock() {
 	// Finally draw the correct color to the current pixel.
 	p.display.DrawPixel(p.cycle-1, p.scanline,
 		p.getColorFromPalette(bgPalette, bgPixel))
+}
 
-	// Draw static to the screen for now (random color pixel)
-	//i := uint8(rand.Intn(0x40))
-	//p.display.DrawPixel(p.cycle-1, p.scanline, p.paletteRGBA[i])
+func (p *Ppu) renderForeground() {
 
-	p.cycle++
-	if p.cycle >= 341 {
-		p.cycle = 0
-		p.scanline++
-
-		// Scanline 261 is referred to scanline -1
-		if p.scanline >= 261 {
-			p.scanline = -1
-			p.frameComplete = true
-			p.frames++
-
-			p.display.UpdateScreen()
-		}
-	}
 }
 
 // Communicate with main (CPU) bus - used for PPU register access.
