@@ -4,11 +4,12 @@ Nintendo Entertainment System emulator written in Go.
 
 ### Check it out
 
+![donkey kong](media/dk.gif)
 ![demo](media/nes_emu.gif)
 
 - 6502 CPU is ~~almost~~ complete. 
 
-- Currently working on the PPU (picture processing unit).
+- Currently working on the PPU (picture processing unit) foreground rendering.
 
 ### Development Requirements
 
