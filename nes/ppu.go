@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"os"
 	"time"
 )
@@ -114,11 +113,6 @@ func NewPpu() *Ppu {
 	}
 }
 
-func init() {
-	// XXX: only needed for generating screen noise before implementing PPU.
-	rand.Seed(time.Now().UnixNano())
-}
-
 func (p *Ppu) ConnectCartridge(c *Cartridge) {
 	p.Cart = c
 }
@@ -145,10 +139,6 @@ func newPpuLogger() *log.Logger {
 func (p *Ppu) Clock() {
 	p.renderBackground()
 	p.renderForeground()
-
-	// Draw static to the screen for now (random color pixel)
-	//i := uint8(rand.Intn(0x40))
-	//p.display.DrawPixel(p.cycle-1, p.scanline, p.paletteRGBA[i])
 
 	p.cycle++
 	if p.cycle >= 341 {
