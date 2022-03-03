@@ -11,12 +11,13 @@ import (
 
 // Main bus used by the CPU.
 type Bus struct {
-	Cpu        *Cpu6502        // NES CPU.
-	Ppu        *Ppu            // Picture processing unit.
-	Ram        [64 * 1024]byte // 64kb RAM used for initial development.
-	Cart       *Cartridge      // NES Cartridge.
-	Controller *Controller     // NES Controller.
-	Disp       *Display
+	Cpu             *Cpu6502        // NES CPU.
+	Ppu             *Ppu            // Picture processing unit.
+	Ram             [64 * 1024]byte // 64kb RAM used for initial development.
+	Cart            *Cartridge      // NES Cartridge.
+	Controller      *Controller     // NES Controller.
+	ControllerState byte            // 8 bit shifter representing each button's state
+	Disp            *Display
 
 	ClockCount int
 
@@ -36,9 +37,12 @@ const (
 	ppuMirror  uint16 = 0x0007 // mirror every 8 bytes.
 
 	// Cartridge
-	//cartMinAddr uint16 = 0x4020
 	cartMinAddr uint16 = 0x8000 // XXX: changing this for now to get disassembler to work
 	cartMaxAddr uint16 = 0xFFFF
+
+	// Controller
+	ctrlMinAddr uint16 = 0x4016
+	ctrlMaxAddr uint16 = 0x4017
 
 	// Frames per second
 	fps float64 = 30.0
@@ -109,6 +113,9 @@ func (b *Bus) CpuRead(addr uint16) byte {
 		data = b.Ppu.cpuRead(addr & ppuMirror)
 	} else if addr >= cartMinAddr && addr <= cartMaxAddr {
 		data = b.Cart.cpuRead(addr)
+	} else if addr >= ctrlMinAddr && addr <= ctrlMaxAddr {
+		data = b.ControllerState & (1 << 7) >> 7
+		b.ControllerState <<= 1 // shift
 	}
 
 	return data
@@ -122,8 +129,9 @@ func (b *Bus) CpuWrite(addr uint16, data byte) {
 		b.Ppu.cpuWrite(addr&ppuMirror, data)
 	} else if addr >= cartMinAddr && addr <= cartMaxAddr {
 		b.Cart.cpuWrite(addr, data)
+	} else if addr >= ctrlMinAddr && addr <= ctrlMaxAddr {
+		b.ControllerState = b.Controller.GetState()
 	}
-
 }
 
 // Load a cartridge to the NES. The cartridge is connected to both the CPU and PPU.

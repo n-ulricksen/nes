@@ -17,35 +17,49 @@ func NewController() *Controller {
 // Available NES controller buttons and their keyboard binds
 // Keyboard binds:
 /*
-	0: A      ---> J
-	1: B      ---> K
-	2: Select ---> Right Shift
-	3: Start  ---> Enter
-	4: Up     ---> W
-	5: Down   ---> S
-	6: Left   ---> A
-	7: Right  ---> D
+	0: Right  ---> D
+	1: Left   ---> A
+	2: Down   ---> S
+	3: Up     ---> W
+	4: Start  ---> Enter
+	5: Select ---> Right Shift
+	6: B      ---> K
+	7: A      ---> J
 */
 const (
-	keyA int = iota
-	keyB
-	keySelect
-	keyStart
-	keyUp
-	keyDown
+	keyRight int = iota
 	keyLeft
-	keyRight
+	keyDown
+	keyUp
+	keyStart
+	keySelect
+	keyB
+	keyA
 )
 
 var controllerKeys = map[int]pixelgl.Button{
-	keyA:      pixelgl.KeyJ,
-	keyB:      pixelgl.KeyK,
-	keySelect: pixelgl.KeyRightShift,
-	keyStart:  pixelgl.KeyEnter,
-	keyUp:     pixelgl.KeyW,
-	keyDown:   pixelgl.KeyS,
-	keyLeft:   pixelgl.KeyA,
 	keyRight:  pixelgl.KeyD,
+	keyLeft:   pixelgl.KeyA,
+	keyDown:   pixelgl.KeyS,
+	keyUp:     pixelgl.KeyW,
+	keyStart:  pixelgl.KeyEnter,
+	keySelect: pixelgl.KeyRightShift,
+	keyB:      pixelgl.KeyK,
+	keyA:      pixelgl.KeyJ,
+}
+
+// GetState returns a byte, with each bit representing the state of a button on
+// the controller.
+func (c *Controller) GetState() byte {
+	var state byte
+
+	for pos, s := range c.buttonState {
+		if s {
+			state |= (1 << pos)
+		}
+	}
+
+	return state
 }
 
 func (c *Controller) updateControllerInput(win *pixelgl.Window) {
@@ -60,6 +74,5 @@ func (c *Controller) updateControllerInput(win *pixelgl.Window) {
 		if win.JustReleased(key) {
 			c.buttonState[idx] = false
 		}
-
 	}
 }
