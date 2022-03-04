@@ -78,7 +78,11 @@ type Ppu struct {
 	// ~~~~~
 
 	// Foreground Rendering ~~~~~~
+
 	// Primary OAM
+	oam     objectAttributeMemory // OAM containing up to 64 sprites
+	oamAddr byte                  // OAM address for the PPU to read from
+
 	// Secondary OAM
 
 	// ~~~~~
@@ -326,6 +330,7 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 		p.addrLatch = 0
 	case 0x0003: // OAM Address
 	case 0x0004: // OAM Data
+		data = p.oam.read(p.oamAddr)
 	case 0x0005: // Scroll
 	case 0x0006: // Address
 	case 0x0007: // Data
@@ -368,7 +373,9 @@ func (p *Ppu) cpuWrite(addr uint16, data byte) {
 		*p.ppuMask = PpuReg(data)
 	case 0x0002: // Status
 	case 0x0003: // OAM Address
+		p.oamAddr = data
 	case 0x0004: // OAM Data
+		p.oam.write(p.oamAddr, data)
 	case 0x0005: // Scroll
 		if p.addrLatch == 0 {
 			// First write (coarse/fine X scroll values)
