@@ -21,6 +21,14 @@ type Bus struct {
 
 	ClockCount int
 
+	// Direct memory access
+	dmaPage byte
+	dmaAddr byte
+	dmaData byte // Memory to be sent from the CPU to the OAM
+
+	dmaTransfer bool // Set to enable DMA transfer
+	dmaNeedSync bool // Set when CPU should wait 1 cycle for DMA
+
 	isDebug   bool // Enable debug panel
 	isLogging bool // Enable logging
 }
@@ -40,6 +48,9 @@ const (
 	cartMinAddr uint16 = 0x8000 // XXX: changing this for now to get disassembler to work
 	cartMaxAddr uint16 = 0xFFFF
 
+	// Direct memory access
+	dmaAddr uint16 = 0x4014
+
 	// Controller
 	ctrlMinAddr uint16 = 0x4016
 	ctrlMaxAddr uint16 = 0x4017
@@ -54,12 +65,15 @@ func NewBus(isDebug, isLogging bool) *Bus {
 
 	// Attach devices to the bus.
 	bus := &Bus{
-		Cpu:        cpu,
-		Ppu:        NewPpu(),
-		Ram:        [64 * 1024]byte{},
-		Controller: NewController(),
-		isDebug:    isDebug,
-		isLogging:  isLogging,
+		Cpu:         cpu,
+		Ppu:         NewPpu(),
+		Ram:         [64 * 1024]byte{},
+		Controller:  NewController(),
+		dmaTransfer: false,
+		dmaNeedSync: true,
+
+		isDebug:   isDebug,
+		isLogging: isLogging,
 	}
 
 	// Connect this bus to the cpu.
@@ -129,6 +143,10 @@ func (b *Bus) CpuWrite(addr uint16, data byte) {
 		b.Ppu.cpuWrite(addr&ppuMirror, data)
 	} else if addr >= cartMinAddr && addr <= cartMaxAddr {
 		b.Cart.cpuWrite(addr, data)
+	} else if addr == dmaAddr {
+		b.dmaPage = data
+		b.dmaAddr = 0x00
+		b.dmaTransfer = true
 	} else if addr >= ctrlMinAddr && addr <= ctrlMaxAddr {
 		b.ControllerState = b.Controller.GetState()
 	}
@@ -153,7 +171,12 @@ func (b *Bus) Clock() {
 
 	// CPU runs 3 times slower than PPU.
 	if b.ClockCount%3 == 0 {
-		b.Cpu.Clock()
+		if b.dmaTransfer {
+			// A DMA transfer suspends the CPU until complete
+			b.initDmaTransfer()
+		} else {
+			b.Cpu.Clock()
+		}
 	}
 
 	if b.Ppu.nmi {
@@ -162,6 +185,30 @@ func (b *Bus) Clock() {
 	}
 
 	b.ClockCount++
+}
+
+func (b *Bus) initDmaTransfer() {
+	if b.dmaNeedSync {
+		if b.ClockCount%2 == 1 {
+			b.dmaNeedSync = false
+		}
+	} else {
+		if b.ClockCount%2 == 0 {
+			// read from CPU memory
+			addr := uint16(b.dmaPage)<<8 | uint16(b.dmaAddr)
+			b.dmaData = b.CpuRead(addr)
+		} else {
+			// write to OAM memory
+			b.Ppu.oam.write(b.dmaAddr, b.dmaData)
+			b.dmaAddr++
+
+			if b.dmaAddr == 0x00 {
+				// DMA transfer has finishied
+				b.dmaTransfer = false
+				b.dmaNeedSync = true
+			}
+		}
+	}
 }
 
 // TODO: move this out of Bus, and into main or something. Also, rewrite this.
