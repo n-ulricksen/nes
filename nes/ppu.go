@@ -75,17 +75,15 @@ type Ppu struct {
 	bgPatternShifterHi uint16
 	bgAttribShifterLo  uint16
 	bgAttribShifterHi  uint16
-	// ~~~~~
 
 	// Foreground Rendering ~~~~~~
-
 	// Primary OAM
 	oam     objectAttributeMemory // OAM containing up to 64 sprites
 	oamAddr byte                  // OAM address for the PPU to read from
 
 	// Secondary OAM
-
-	// ~~~~~
+	spriteScanline objectAttributeMemory // Sprite OAM data for the next scanline
+	spriteCount    int                   // Number of sprites found on next scanline
 
 	display *Display
 
@@ -114,6 +112,9 @@ func NewPpu() *Ppu {
 		tRam: new(PpuLoopyReg),
 
 		paletteRGBA: loadPalette("./palettes/ntscpalette.pal"),
+
+		oam:            make(objectAttributeMemory, 64),
+		spriteScanline: make(objectAttributeMemory, 8),
 	}
 }
 
@@ -311,8 +312,20 @@ func (p *Ppu) renderBackground() {
 		p.getColorFromPalette(bgPalette, bgPixel))
 }
 
+// renderForeground is not cycle accurate, this is not a problem for running
+// most games.
 func (p *Ppu) renderForeground() {
+	// End of visible scanline
+	if p.cycle == 257 && p.scanline >= 0 {
+		p.spriteScanline.clear()
+		p.spriteCount = 0
 
+		p.spriteEvaluation()
+
+		// find relevant data from pattern memory
+		if cycle == 340 {
+		}
+	}
 }
 
 // Communicate with main (CPU) bus - used for PPU register access.
@@ -641,6 +654,36 @@ func (p *Ppu) incrementVerticalScroll() {
 			y++
 		}
 		p.vRam.setCoarseY(y)
+	}
+}
+
+// Get the PPU's sprite size determined by a flag in the control register.
+func (p *Ppu) getSpriteSize() int {
+	if p.ppuCtrl.getFlag(ctrlSpriteSize) > 0 {
+		return 16
+	}
+	return 8
+}
+
+// Sprite evaluation - find first 8 sprites to be rendered on next scanline,
+// copy them to secondary OAM (spriteScanline).
+func (p *Ppu) spriteEvaluation() {
+	for oamIdx, entry := range p.oam {
+		diff := p.scanline - int(entry.y)
+		spriteSize := p.getSpriteSize()
+		if diff >= 0 && diff < spriteSize && p.spriteCount < 8 {
+			// Sprite hit!
+			copyOamEntry(&p.spriteScanline[p.spriteCount], &p.oam[oamIdx])
+			p.spriteCount++
+		}
+
+		if p.spriteCount > 8 {
+			break
+		}
+	}
+
+	if p.spriteCount > 8 {
+		p.ppuStatus.setFlag(statusSpriteOverflow)
 	}
 }
 

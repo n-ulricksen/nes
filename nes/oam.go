@@ -1,6 +1,8 @@
 package nes
 
-type objectAttributeMemory [64]oamSprite
+import "fmt"
+
+type objectAttributeMemory []oamSprite
 
 // oamSprite represents one entry, or sprite, in the Object Attribute memory.
 type oamSprite struct {
@@ -10,7 +12,7 @@ type oamSprite struct {
 	x         byte // X position of the sprite
 }
 
-func (oam *objectAttributeMemory) read(addr byte) byte {
+func (oam objectAttributeMemory) read(addr byte) byte {
 	spriteIdx := int(addr) / 4
 	propIdx := int(addr) % 4
 
@@ -31,7 +33,7 @@ func (oam *objectAttributeMemory) read(addr byte) byte {
 	return data
 }
 
-func (oam *objectAttributeMemory) write(addr byte, data byte) {
+func (oam objectAttributeMemory) write(addr byte, data byte) {
 	spriteIdx := int(addr) / 4
 	propIdx := int(addr) % 4
 
@@ -47,4 +49,21 @@ func (oam *objectAttributeMemory) write(addr byte, data byte) {
 	case 3:
 		sprite.x = data
 	}
+}
+
+func (oam objectAttributeMemory) clear() {
+	for i := range oam {
+		oam[i].y = 0xFF
+		oam[i].id = 0xFF
+		oam[i].attribute = 0xFF
+		oam[i].x = 0xFF
+	}
+}
+
+func copyOamEntry(to, from *oamSprite) {
+	fmt.Println(*to, *from)
+	to.y = from.y
+	to.id = from.id
+	to.attribute = from.attribute
+	to.x = from.x
 }
