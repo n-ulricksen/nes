@@ -85,6 +85,10 @@ type Ppu struct {
 	spriteScanline objectAttributeMemory // Sprite OAM data for the next scanline
 	spriteCount    int                   // Number of sprites found on next scanline
 
+	// Shifters to hold sprite pattern data
+	spriteShifterPatternLo [8]byte // low byte
+	spriteShifterPatternHi [8]byte // high byte
+
 	display *Display
 
 	paletteRGBA [paletteSize]color.RGBA
@@ -323,7 +327,11 @@ func (p *Ppu) renderForeground() {
 		p.spriteEvaluation()
 
 		// find relevant data from pattern memory
-		if cycle == 340 {
+		if p.cycle == 340 {
+			for i := 0; i < p.spriteCount; i++ {
+				var spritePatternBitsLo, spritePatternBitsHi byte
+				var spritePatternAddrLo, spritePatternAddrHi uint16
+			}
 		}
 	}
 }
