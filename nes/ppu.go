@@ -671,9 +671,11 @@ func (p *Ppu) spriteEvaluation() {
 	for oamIdx, entry := range p.oam {
 		diff := p.scanline - int(entry.y)
 		spriteSize := p.getSpriteSize()
-		if diff >= 0 && diff < spriteSize && p.spriteCount < 8 {
+		if diff >= 0 && diff < spriteSize {
 			// Sprite hit!
-			copyOamEntry(&p.spriteScanline[p.spriteCount], &p.oam[oamIdx])
+			if p.spriteCount < 8 {
+				copyOamEntry(&p.spriteScanline[p.spriteCount], &p.oam[oamIdx])
+			}
 			p.spriteCount++
 		}
 
