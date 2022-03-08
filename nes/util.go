@@ -25,3 +25,28 @@ func TimeTrack(start time.Time) {
 
 	log.Println(fmt.Sprintf("%s took %s", name, elapsed))
 }
+
+// Flip a byte's bits.
+func flipByte(b byte) byte {
+	for i := 0; i < 4; i++ {
+		bitLo := i
+		bitHi := 7 - i
+
+		newLo := (b & (1 << bitHi)) >> bitHi
+		newHi := b & (1 << bitLo)
+
+		setBit(&b, bitLo, newLo)
+		setBit(&b, bitHi, newHi)
+	}
+
+	return b
+}
+
+// Set a bit in b at the given bit index.
+func setBit(b *byte, bitIdx int, newBit byte) {
+	if newBit == 0 {
+		*b &^= (1 << bitIdx)
+	} else {
+		*b |= (1 << bitIdx)
+	}
+}

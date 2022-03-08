@@ -319,19 +319,38 @@ func (p *Ppu) renderBackground() {
 // renderForeground is not cycle accurate, this is not a problem for running
 // most games.
 func (p *Ppu) renderForeground() {
+	if p.scanline == -1 && p.cycle == 1 {
+		// Clear sprite overflow and sprite shifters
+		p.ppuStatus.clearFlag(statusSpriteOverflow)
+		p.clearSpriteShifters()
+	}
+
 	// End of visible scanline
 	if p.cycle == 257 && p.scanline >= 0 {
 		p.spriteScanline.clear()
 		p.spriteCount = 0
 
 		p.spriteEvaluation()
+	}
 
-		// find relevant data from pattern memory
-		if p.cycle == 340 {
-			for i := 0; i < p.spriteCount; i++ {
-				var spritePatternBitsLo, spritePatternBitsHi byte
-				var spritePatternAddrLo, spritePatternAddrHi uint16
+	// Sprite loading
+	if p.cycle == 340 {
+		for spriteIdx := 0; spriteIdx < p.spriteCount; spriteIdx++ {
+			sprite := p.spriteScanline[spriteIdx]
+
+			spritePatternAddrLo, spritePatternAddrHi := p.getSpritePatternAddr(sprite)
+
+			// Read data
+			spritePatternDataLo := p.ppuRead(spritePatternAddrLo)
+			spritePatternDataHi := p.ppuRead(spritePatternAddrHi)
+			if sprite.isFlippedHorizontal() {
+				spritePatternDataLo = flipByte(spritePatternDataLo)
+				spritePatternDataHi = flipByte(spritePatternDataHi)
 			}
+
+			// Load data to sprite shifters
+			p.spriteShifterPatternLo[spriteIdx] = spritePatternDataLo
+			p.spriteShifterPatternHi[spriteIdx] = spritePatternDataHi
 		}
 	}
 }
@@ -607,7 +626,7 @@ func (p *Ppu) shouldRender() bool {
 	return showBg || showSprites
 }
 
-// Update the shifters used to implement fine x scrolling.
+// Update the shifters used to implement fine x scrolling and sprite rendering.
 func (p *Ppu) updateShifters() {
 	// Pattern table shifters
 	p.bgPatternShifterLo <<= 1
@@ -616,6 +635,19 @@ func (p *Ppu) updateShifters() {
 	// Palette attribute shifters
 	p.bgAttribShifterLo <<= 1
 	p.bgAttribShifterHi <<= 1
+
+	// Sprites
+	if p.ppuMask.getFlag(maskSpriteShow) > 0 && p.cycle >= 1 && p.cycle < 258 {
+		for spriteIdx := 0; spriteIdx < p.spriteCount; spriteIdx++ {
+			sprite := p.spriteScanline[spriteIdx]
+			if sprite.x > 0 {
+				sprite.x--
+			} else {
+				p.spriteShifterPatternLo[spriteIdx] <<= 1
+				p.spriteShifterPatternHi[spriteIdx] <<= 1
+			}
+		}
+	}
 }
 
 // Load the background shifters with background tile pattern and attributes.
@@ -676,6 +708,8 @@ func (p *Ppu) getSpriteSize() int {
 // Sprite evaluation - find first 8 sprites to be rendered on next scanline,
 // copy them to secondary OAM (spriteScanline).
 func (p *Ppu) spriteEvaluation() {
+	spriteOverflow := false
+
 	for oamIdx, entry := range p.oam {
 		diff := p.scanline - int(entry.y)
 		spriteSize := p.getSpriteSize()
@@ -683,18 +717,77 @@ func (p *Ppu) spriteEvaluation() {
 			// Sprite hit!
 			if p.spriteCount < 8 {
 				copyOamEntry(&p.spriteScanline[p.spriteCount], &p.oam[oamIdx])
+				p.spriteCount++
+			} else {
+				spriteOverflow = true
 			}
-			p.spriteCount++
 		}
 
-		if p.spriteCount > 8 {
+		if p.spriteCount >= 8 && spriteOverflow {
 			break
 		}
 	}
 
-	if p.spriteCount > 8 {
+	if spriteOverflow {
 		p.ppuStatus.setFlag(statusSpriteOverflow)
 	}
+}
+
+// Clear the PPU's 8 sprite shifters, setting each shifter to 0.
+func (p *Ppu) clearSpriteShifters() {
+	for i := 0; i < 8; i++ {
+		p.spriteShifterPatternLo[i] = 0
+		p.spriteShifterPatternHi[i] = 0
+	}
+}
+
+func (p *Ppu) getSpritePatternAddr(sprite oamSprite) (uint16, uint16) {
+	// Find correct addresses - influenced by sprite mode, current
+	// pattern table, tile ID of the sprite
+	var addrLo uint16
+
+	if p.getSpriteSize() == 8 {
+		// 8x8
+		if sprite.isFlippedVertical() {
+			// 0KB or 4KB pattern table, 16 byte sprite
+			addrLo = (uint16(p.ppuCtrl.getFlag(ctrlSpritePatternTbl)) << 12) |
+				(uint16(sprite.id) << 4) |
+				(uint16(7 - (byte(p.scanline) - sprite.y))) // row (flipped)
+		} else {
+			addrLo = (uint16(p.ppuCtrl.getFlag(ctrlSpritePatternTbl)) << 12) |
+				(uint16(sprite.id) << 4) |
+				(uint16(byte(p.scanline) - sprite.y)) // row
+		}
+	} else {
+		// 8x16
+		if sprite.isFlippedVertical() {
+			if p.scanline-int(sprite.y) < 8 {
+				// top half of the sprite
+				addrLo = (uint16(sprite.id&0x01) << 12) |
+					(uint16(sprite.id&0xFE) << 4) |
+					(uint16(7 - (byte(p.scanline)-sprite.y)&0x07))
+			} else {
+				// bottom half of the sprite
+				addrLo = (uint16(sprite.id&0x01) << 12) |
+					(uint16((sprite.id&0xFE)+1) << 4) |
+					(uint16(7 - (byte(p.scanline)-sprite.y)&0x07))
+			}
+		} else {
+			if p.scanline-int(sprite.y) < 8 {
+				// top half of the sprite
+				addrLo = (uint16(sprite.id&0x01) << 12) |
+					(uint16(sprite.id&0xFE) << 4) |
+					(uint16((byte(p.scanline) - sprite.y) & 0x07))
+			} else {
+				// bottom half of the sprite
+				addrLo = (uint16(sprite.id&0x01) << 12) |
+					(uint16((sprite.id&0xFE)+1) << 4) |
+					(uint16((byte(p.scanline) - sprite.y) & 0x07))
+			}
+		}
+	}
+
+	return addrLo, addrLo + 8
 }
 
 // Convenience functions for development.

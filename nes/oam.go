@@ -1,7 +1,5 @@
 package nes
 
-import "fmt"
-
 type objectAttributeMemory []oamSprite
 
 // oamSprite represents one entry, or sprite, in the Object Attribute memory.
@@ -60,8 +58,17 @@ func (oam objectAttributeMemory) clear() {
 	}
 }
 
+// isFlippedVertical returns true if the oamSprite's vertical flip flag is set.
+func (s oamSprite) isFlippedVertical() bool {
+	return (s.attribute & 0x80) > 0
+}
+
+// isFlippedHorizontal returns true if the oamSprite's horizontal flip flag is set.
+func (s oamSprite) isFlippedHorizontal() bool {
+	return (s.attribute & 0x40) > 0
+}
+
 func copyOamEntry(to, from *oamSprite) {
-	fmt.Println(*to, *from)
 	to.y = from.y
 	to.id = from.id
 	to.attribute = from.attribute
