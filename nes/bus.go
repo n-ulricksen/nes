@@ -10,12 +10,12 @@ import (
 
 // Main bus used by the CPU.
 type Bus struct {
-	Cpu             *Cpu6502        // NES CPU.
-	Ppu             *Ppu            // Picture processing unit.
-	Ram             [64 * 1024]byte // 64kb RAM used for initial development.
-	Cart            *Cartridge      // NES Cartridge.
-	Controller      *Controller     // NES Controller.
-	ControllerState byte            // 8 bit shifter representing each button's state
+	Cpu             *Cpu6502       // NES CPU.
+	Ppu             *Ppu           // Picture processing unit.
+	Ram             [8 * 1024]byte // 8kb RAM.
+	Cart            *Cartridge     // NES Cartridge.
+	Controller      *Controller    // NES Controller.
+	ControllerState byte           // 8 bit shifter representing each button's state
 	Disp            *Display
 
 	ClockCount int
@@ -66,7 +66,6 @@ func NewBus(isDebug, isLogging bool) *Bus {
 	bus := &Bus{
 		Cpu:         cpu,
 		Ppu:         NewPpu(),
-		Ram:         [64 * 1024]byte{},
 		Controller:  NewController(),
 		dmaTransfer: false,
 		dmaNeedSync: true,
