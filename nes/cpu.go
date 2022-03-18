@@ -27,14 +27,15 @@ type Cpu6502 struct {
 	CycleCount    uint32 // Total # of cycles executed by the CPU
 	isImpliedAddr bool   // Whether the current instruction's address mode is implied
 
-	disassembly map[uint16]string
+	// Used for printing disassembly in debug mode
+	Disassembly map[uint16]string
+
+	PrevInstructions [15]string
+	PrevInstIdx      int
 
 	InstLookup [16 * 16]Instruction // Instruction operation lookup
 
 	AddrModeFns map[AddressingMode]func() byte // Addressing mode name -> function map
-
-	// TODO: remove this completely
-	OpDiss string // Dissasembly for the current instruction, used for debug
 
 	Logger *log.Logger // CPU logging
 	state  string      // CPU register state
@@ -291,10 +292,14 @@ func (cpu *Cpu6502) Clock() {
 			cpu.prevPc = cpu.Pc
 		}
 
+		if cpu.bus.isDebug {
+			disassembly := cpu.Disassembly[cpu.Pc]
+			cpu.PrevInstructions[cpu.PrevInstIdx] = disassembly
+			cpu.PrevInstIdx = (cpu.PrevInstIdx + 1) % len(cpu.PrevInstructions)
+		}
+
 		// Lookup by opcode the instruction to be executed.
 		inst := cpu.InstLookup[cpu.Opcode]
-
-		//fmt.Printf("from %#x fetched %#x: %v\n", cpu.Pc, cpu.Opcode, inst)
 
 		// Increment program counter.
 		cpu.Pc++
@@ -315,7 +320,6 @@ func (cpu *Cpu6502) Clock() {
 			buf.WriteString(fmt.Sprintf("%04X\t%02X - %s ", cpu.prevPc, cpu.Opcode, inst.Name))
 			buf.WriteString(cpu.state)
 			cpu.Logger.Print(buf.String())
-			cpu.OpDiss = buf.String()
 		}
 
 		cpu.Cycles += (extraCycles1 & extraCycles2)

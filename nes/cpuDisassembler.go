@@ -39,26 +39,26 @@ func (cpu *Cpu6502) Disassemble(startAddr, endAddr uint16) map[uint16]string {
 		case IMM:
 			value = cpu.read(uint16(addr))
 			addr++
-			lineDiss.WriteString(fmt.Sprintf("#$%04X {IMM}", value))
+			lineDiss.WriteString(fmt.Sprintf("#$%02X {IMM}", value))
 		case REL:
 			value = cpu.read(uint16(addr))
 			addr++
-			lineDiss.WriteString(fmt.Sprintf("$%04X [%04X] {REL}", value, uint16(value)+uint16(addr)))
+			lineDiss.WriteString(fmt.Sprintf("$%02X [%04X] {REL}", value, uint16(value)+uint16(addr)))
 		case ZP0:
 			lo = cpu.read(uint16(addr))
 			addr++
 			hi = 0x00
-			lineDiss.WriteString(fmt.Sprintf("$%04X {ZP0}", lo))
+			lineDiss.WriteString(fmt.Sprintf("$%02X {ZP0}", lo))
 		case ZPX:
 			lo = cpu.read(uint16(addr))
 			addr++
 			hi = 0x00
-			lineDiss.WriteString(fmt.Sprintf("$%04X, X {ZPX}", lo))
+			lineDiss.WriteString(fmt.Sprintf("$%02X, X {ZPX}", lo))
 		case ZPY:
 			lo = cpu.read(uint16(addr))
 			addr++
 			hi = 0x00
-			lineDiss.WriteString(fmt.Sprintf("$%04X, Y {ZPY}", lo))
+			lineDiss.WriteString(fmt.Sprintf("$%02X, Y {ZPY}", lo))
 		case ABS:
 			lo = cpu.read(uint16(addr))
 			addr++
@@ -87,12 +87,12 @@ func (cpu *Cpu6502) Disassemble(startAddr, endAddr uint16) map[uint16]string {
 			lo = cpu.read(uint16(addr))
 			addr++
 			hi = 0x00
-			lineDiss.WriteString(fmt.Sprintf("($%04X, X) {IZX}", lo))
+			lineDiss.WriteString(fmt.Sprintf("($%02X, X) {IZX}", lo))
 		case IZY:
 			lo = cpu.read(uint16(addr))
 			addr++
 			hi = 0x00
-			lineDiss.WriteString(fmt.Sprintf("($%04X, Y) {IZY}", lo))
+			lineDiss.WriteString(fmt.Sprintf("($%02X, Y) {IZY}", lo))
 		}
 
 		// Add to map
@@ -100,7 +100,7 @@ func (cpu *Cpu6502) Disassemble(startAddr, endAddr uint16) map[uint16]string {
 		lineDiss.Reset()
 	}
 
-	cpu.disassembly = disassembly
+	cpu.Disassembly = disassembly
 
 	return disassembly
 }

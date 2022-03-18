@@ -2,7 +2,6 @@ package nes
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -229,36 +228,23 @@ func (b *Bus) DrawDebugPanel() {
 	b.Disp.WriteInstDebugString(diss)
 }
 
+// getDisassemblyLines returns the last 15 lines of disassembly, separated by
+// new lines, as a string.
 func (b *Bus) getDisassemblyLines() string {
 	var buf bytes.Buffer
 
-	pc := b.Cpu.Pc
+	idx := b.Cpu.PrevInstIdx
+	length := len(b.Cpu.PrevInstructions)
 
-	idx := pc
-	for i := 0; i < 10; i++ {
-		idx, err := getNextIdx(&b.Cpu.disassembly, idx)
-		if err != nil {
-			// End of the map
-			break
+	for i := 1; i <= length; i++ {
+		inst := b.Cpu.PrevInstructions[(idx+i)%length]
+		if inst != "" {
+			buf.WriteString(inst)
+			buf.WriteByte('\n')
 		}
-		idx++
-		buf.WriteString(b.Cpu.disassembly[idx])
-		buf.WriteByte('\n')
 	}
 
 	return buf.String()
-}
-
-// Items are stored by memory address, not all memory address are filled. This
-// function returns the next item at or after the given memory address.
-func getNextIdx(m *map[uint16]string, addr uint16) (uint16, error) {
-	for _, ok := (*m)[addr]; !ok; addr++ {
-		if addr >= 0xFFFF {
-			return 0, errors.New("End of map")
-		}
-	}
-
-	return addr, nil
 }
 
 func (b *Bus) getCpuDebugString() string {
@@ -273,10 +259,6 @@ func (b *Bus) getCpuDebugString() string {
 
 	// Cycles
 	buf.WriteString(fmt.Sprintf("Cycle Count: %d\n\n", b.Cpu.CycleCount))
-
-	// Instructions
-	//buf.WriteString(fmt.Sprintf(t, "%#02X: %s\n\n", b.Cpu.Opcode, nesEmu.Cpu.InstLookup[nesEmu.Cpu.Opcode].Name)
-	buf.WriteString(fmt.Sprintf("Previous Instruction:\n%s\n", b.Cpu.OpDiss))
 
 	return buf.String()
 }
