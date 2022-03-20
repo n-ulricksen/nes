@@ -12,7 +12,7 @@ import (
 type Bus struct {
 	Cpu             *Cpu6502       // NES CPU.
 	Ppu             *Ppu           // Picture processing unit.
-	Ram             [8 * 1024]byte // 8kb RAM.
+	Ram             [8 * 1024]byte // 8KiB RAM.
 	Cart            *Cartridge     // NES Cartridge.
 	Controller      *Controller    // NES Controller.
 	ControllerState byte           // 8 bit shifter representing each button's state

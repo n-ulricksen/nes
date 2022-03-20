@@ -1,6 +1,16 @@
 package nes
 
-type objectAttributeMemory []oamSprite
+type objectAttributeMemory []*oamSprite
+
+// newOAM returns object attribute memory of the given size, with each entry
+// allocated in memory.
+func newOAM(size int) objectAttributeMemory {
+	oam := make(objectAttributeMemory, size)
+	for i := range oam {
+		oam[i] = new(oamSprite)
+	}
+	return oam
+}
 
 // oamSprite represents one entry, or sprite, in the Object Attribute memory.
 type oamSprite struct {

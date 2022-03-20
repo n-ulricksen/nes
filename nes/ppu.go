@@ -86,8 +86,17 @@ type Ppu struct {
 	spriteCount    int                   // Number of sprites found on next scanline
 
 	// Shifters to hold sprite pattern data
-	spriteShifterPatternLo [8]byte // low byte
-	spriteShifterPatternHi [8]byte // high byte
+	spritePatternShifterLo [8]byte // low byte
+	spritePatternShifterHi [8]byte // high byte
+
+	// Foreground/background pixel and palette channels - used for rendering
+	bgPixel   byte
+	fgPixel   byte
+	bgPalette byte
+	fgPalette byte
+
+	// Whether to render foreground pixel in front
+	fgPriority bool
 
 	display *Display
 
@@ -117,8 +126,8 @@ func NewPpu() *Ppu {
 
 		paletteRGBA: loadPalette("./palettes/ntscpalette.pal"),
 
-		oam:            make(objectAttributeMemory, 64),
-		spriteScanline: make(objectAttributeMemory, 8),
+		oam:            newOAM(64),
+		spriteScanline: newOAM(8),
 	}
 }
 
@@ -146,8 +155,9 @@ func newPpuLogger() *log.Logger {
 // 1 frame = 262 scanlines (-1 - 260)
 // 1 scanline = 341 PPU clock cycles (0 - 340)
 func (p *Ppu) Clock() {
-	p.renderBackground()
-	p.renderForeground()
+	p.calculateBackgroundPixel()
+	p.calculateForegroundPixel()
+	p.drawPixel(p.cycle-1, p.scanline)
 
 	p.cycle++
 	if p.cycle >= 341 {
@@ -165,9 +175,11 @@ func (p *Ppu) Clock() {
 	}
 }
 
-// PPU background rendering, 1 scanline/pixel at a time.
+// calculateBackgroundPixel calculates the correct pixel on the background to
+// be rendered on the current cycle/scanline.
+//
 // https://wiki.nesdev.com/w/index.php/PPU_rendering
-func (p *Ppu) renderBackground() {
+func (p *Ppu) calculateBackgroundPixel() {
 	// Rendering visible scanlines. We must include scanline -1 here because
 	// that is when the data used in scanline 0 is fetched.
 	if p.scanline >= -1 && p.scanline < 240 {
@@ -234,7 +246,6 @@ func (p *Ppu) renderBackground() {
 						// Course X is last bits of vRam address
 						*p.vRam += 1
 					}
-
 				}
 			}
 		}
@@ -312,13 +323,13 @@ func (p *Ppu) renderBackground() {
 	}
 
 	// Finally draw the correct color to the current pixel.
-	p.display.DrawPixel(p.cycle-1, p.scanline,
-		p.getColorFromPalette(bgPalette, bgPixel))
+	p.bgPixel = bgPixel
+	p.bgPalette = bgPalette
 }
 
-// renderForeground is not cycle accurate, this is not a problem for running
-// most games.
-func (p *Ppu) renderForeground() {
+// calculateForegroundPixel calculates the correct pixel on the foreground to
+// be rendered on the current cycle/scanline.
+func (p *Ppu) calculateForegroundPixel() {
 	if p.scanline == -1 && p.cycle == 1 {
 		// Clear sprite overflow and sprite shifters
 		p.ppuStatus.clearFlag(statusSpriteOverflow)
@@ -335,24 +346,83 @@ func (p *Ppu) renderForeground() {
 
 	// Sprite loading
 	if p.cycle == 340 {
-		for spriteIdx := 0; spriteIdx < p.spriteCount; spriteIdx++ {
-			sprite := p.spriteScanline[spriteIdx]
+		p.loadSprites()
+	}
 
-			spritePatternAddrLo, spritePatternAddrHi := p.getSpritePatternAddr(sprite)
-
-			// Read data
-			spritePatternDataLo := p.ppuRead(spritePatternAddrLo)
-			spritePatternDataHi := p.ppuRead(spritePatternAddrHi)
-			if sprite.isFlippedHorizontal() {
-				spritePatternDataLo = flipByte(spritePatternDataLo)
-				spritePatternDataHi = flipByte(spritePatternDataHi)
+	// Get the palette, pixel, and priority.
+	if p.ppuMask.getFlag(maskSpriteShow) > 0 {
+		// Find the first visible pixel (x = 0) of highest priority.
+		for i, sprite := range p.spriteScanline {
+			if i >= p.spriteCount {
+				break
 			}
 
-			// Load data to sprite shifters
-			p.spriteShifterPatternLo[spriteIdx] = spritePatternDataLo
-			p.spriteShifterPatternHi[spriteIdx] = spritePatternDataHi
+			if sprite.x == 0 {
+				// Grab the pixel data: the most significant bits from shifters
+				var pixelLo, pixelHi byte
+				if (p.spritePatternShifterLo[i] & 0x80) > 0 {
+					pixelLo = 1
+				}
+				if (p.spritePatternShifterHi[i] & 0x80) > 0 {
+					pixelHi = 1
+				}
+				p.fgPixel = (pixelHi << 1) | pixelLo
+
+				// Pallete data (bottom 2 bits of attribute byte). This is
+				// offset by 4, because the first 4 palettes are used only for
+				// background rendering.
+				p.fgPalette = (sprite.attribute & 0x03) + 0x04
+
+				// Priority (5th bit of attribute byte)
+				if sprite.attribute&(1<<5) == 0 {
+					// 0 bit = foreground priority
+					p.fgPriority = true
+				} else {
+					p.fgPriority = false
+				}
+
+				if p.fgPixel != 0 {
+					// Found a sprite! Render its pixel.
+					break
+				}
+			}
 		}
 	}
+}
+
+// drawPixel combines the caculated background and foreground pixels, and
+// determines which color to draw at the given (x, y) coordianate based on
+// sprite priority.
+func (p *Ppu) drawPixel(x, y int) {
+	var pixel, palette byte
+
+	// Determine pixel priority (foreground or background)
+	if p.bgPixel == 0 && p.fgPixel == 0 {
+		// Transparent background
+		pixel = 0x00
+		palette = 0x00
+	} else if p.bgPixel == 0 && p.fgPixel > 0 {
+		// Foreground is output
+		pixel = p.fgPixel
+		palette = p.fgPalette
+	} else if p.bgPixel > 0 && p.fgPixel == 0 {
+		// Background is output
+		pixel = p.bgPixel
+		palette = p.bgPalette
+	} else if p.bgPixel > 0 && p.fgPixel > 0 {
+		// Depends on foreground priority
+		if p.fgPriority {
+			pixel = p.fgPixel
+			palette = p.fgPalette
+		} else {
+			pixel = p.bgPixel
+			palette = p.bgPalette
+		}
+	}
+
+	// Draw the pixel
+	clr := p.getColorFromPalette(palette, pixel)
+	p.display.DrawPixel(x, y, clr)
 }
 
 // Communicate with main (CPU) bus - used for PPU register access.
@@ -402,7 +472,6 @@ func (p *Ppu) cpuRead(addr uint16) byte {
 }
 
 func (p *Ppu) cpuWrite(addr uint16, data byte) {
-	//fmt.Printf("CPU writing %x to address %x.\n", data, addr)
 	switch addr {
 	case 0x0000: // Controller
 		*p.ppuCtrl = PpuReg(data)
@@ -628,13 +697,15 @@ func (p *Ppu) shouldRender() bool {
 
 // Update the shifters used to implement fine x scrolling and sprite rendering.
 func (p *Ppu) updateShifters() {
-	// Pattern table shifters
-	p.bgPatternShifterLo <<= 1
-	p.bgPatternShifterHi <<= 1
+	if p.ppuMask.getFlag(maskBgShow) > 0 {
+		// Pattern table shifters
+		p.bgPatternShifterLo <<= 1
+		p.bgPatternShifterHi <<= 1
 
-	// Palette attribute shifters
-	p.bgAttribShifterLo <<= 1
-	p.bgAttribShifterHi <<= 1
+		// Palette attribute shifters
+		p.bgAttribShifterLo <<= 1
+		p.bgAttribShifterHi <<= 1
+	}
 
 	// Sprites
 	if p.ppuMask.getFlag(maskSpriteShow) > 0 && p.cycle >= 1 && p.cycle < 258 {
@@ -643,8 +714,8 @@ func (p *Ppu) updateShifters() {
 			if sprite.x > 0 {
 				sprite.x--
 			} else {
-				p.spriteShifterPatternLo[spriteIdx] <<= 1
-				p.spriteShifterPatternHi[spriteIdx] <<= 1
+				p.spritePatternShifterLo[spriteIdx] <<= 1
+				p.spritePatternShifterHi[spriteIdx] <<= 1
 			}
 		}
 	}
@@ -716,7 +787,7 @@ func (p *Ppu) spriteEvaluation() {
 		if diff >= 0 && diff < spriteSize {
 			// Sprite hit!
 			if p.spriteCount < 8 {
-				copyOamEntry(&p.spriteScanline[p.spriteCount], &p.oam[oamIdx])
+				copyOamEntry(p.spriteScanline[p.spriteCount], p.oam[oamIdx])
 				p.spriteCount++
 			} else {
 				spriteOverflow = true
@@ -736,12 +807,14 @@ func (p *Ppu) spriteEvaluation() {
 // Clear the PPU's 8 sprite shifters, setting each shifter to 0.
 func (p *Ppu) clearSpriteShifters() {
 	for i := 0; i < 8; i++ {
-		p.spriteShifterPatternLo[i] = 0
-		p.spriteShifterPatternHi[i] = 0
+		p.spritePatternShifterLo[i] = 0
+		p.spritePatternShifterHi[i] = 0
 	}
 }
 
-func (p *Ppu) getSpritePatternAddr(sprite oamSprite) (uint16, uint16) {
+// getSpritePatternAddr returns the calculated low and high memory addresses
+// for the given sprite.
+func (p *Ppu) getSpritePatternAddr(sprite *oamSprite) (uint16, uint16) {
 	// Find correct addresses - influenced by sprite mode, current
 	// pattern table, tile ID of the sprite
 	var addrLo uint16
@@ -788,6 +861,28 @@ func (p *Ppu) getSpritePatternAddr(sprite oamSprite) (uint16, uint16) {
 	}
 
 	return addrLo, addrLo + 8
+}
+
+// loadSprites loads the sprites found on the current scanline to the sprite
+// shifters.
+func (p *Ppu) loadSprites() {
+	for spriteIdx := 0; spriteIdx < p.spriteCount; spriteIdx++ {
+		sprite := p.spriteScanline[spriteIdx]
+
+		spritePatternAddrLo, spritePatternAddrHi := p.getSpritePatternAddr(sprite)
+
+		// Read data
+		spritePatternDataLo := p.ppuRead(spritePatternAddrLo)
+		spritePatternDataHi := p.ppuRead(spritePatternAddrHi)
+		if sprite.isFlippedHorizontal() {
+			spritePatternDataLo = flipByte(spritePatternDataLo)
+			spritePatternDataHi = flipByte(spritePatternDataHi)
+		}
+
+		// Load data to sprite shifters
+		p.spritePatternShifterLo[spriteIdx] = spritePatternDataLo
+		p.spritePatternShifterHi[spriteIdx] = spritePatternDataHi
+	}
 }
 
 // Convenience functions for development.
