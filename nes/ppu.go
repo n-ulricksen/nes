@@ -89,7 +89,7 @@ type Ppu struct {
 	spritePatternShifterLo [8]byte // low byte
 	spritePatternShifterHi [8]byte // high byte
 
-	// Foreground/background pixel and palette channels - used for rendering
+	// Foreground/background pixel and palette - used for rendering
 	bgPixel   byte
 	fgPixel   byte
 	bgPalette byte
