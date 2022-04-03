@@ -155,7 +155,9 @@ func (b *Bus) CpuWrite(addr uint16, data byte) {
 		b.dmaAddr = 0x00
 		b.dmaTransfer = true
 	} else if addr >= ctrlMinAddr && addr <= ctrlMaxAddr {
-		b.ControllerState[addr&1] = b.Controller[addr&1].GetState()
+		for i, c := range b.Controller {
+			b.ControllerState[i] = c.GetState()
+		}
 	}
 }
 
@@ -232,6 +234,8 @@ func (b *Bus) DrawDebugPanel() {
 	b.Disp.WriteRegDebugString(debugStr)
 
 	// Keyboard input
+	contDebugStr := fmt.Sprintf("Controller status:\n%08b\n\n%08b", b.ControllerState[0], b.ControllerState[1])
+	b.Disp.WriteControllerDebugString(contDebugStr)
 
 	// Disassembly
 	diss := b.getDisassemblyLines()

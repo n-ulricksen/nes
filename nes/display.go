@@ -21,9 +21,10 @@ type Display struct {
 	debugMatrix pixel.Matrix // Scale and position to render the running NES game.
 
 	// Debug text stuff
-	debugAtlas    *text.Atlas // Used to load the font
-	debugRegText  *text.Text  // CPU register printout
-	debugInstText *text.Text  // CPU instruction disassembly
+	debugAtlas          *text.Atlas // Used to load the font
+	debugRegText        *text.Text  // CPU register printout
+	debugInstText       *text.Text  // CPU instruction disassembly
+	debugControllerText *text.Text  // Controller input status
 
 	isDebug bool // Debug mode enabled on the NES
 }
@@ -80,6 +81,7 @@ func NewDisplay(isDebug bool) *Display {
 	debugAtlas := text.NewAtlas(basicfont.Face7x13, text.ASCII)
 	debugRegText := text.New(pixel.V(gameW+8, gameH-40), debugAtlas)
 	debugInstText := text.New(pixel.V(gameW+8, gameH-180), debugAtlas)
+	debugControllerText := text.New(pixel.V(gameW+300, gameH-40), debugAtlas)
 
 	return &Display{
 		gameRgba,
@@ -90,6 +92,7 @@ func NewDisplay(isDebug bool) *Display {
 		debugAtlas,
 		debugRegText,
 		debugInstText,
+		debugControllerText,
 		isDebug,
 	}
 }
@@ -124,6 +127,12 @@ func (d *Display) WriteInstDebugString(t string) {
 	d.debugInstText.WriteString(t)
 }
 
+// Write a string of text to the controller status section of the debug panel.
+func (d *Display) WriteControllerDebugString(t string) {
+	d.debugControllerText.Clear()
+	d.debugControllerText.WriteString(t)
+}
+
 // UpdateScreen updates both the game display and the debug display using the
 // display's current image.RGBA representation of each.
 func (d *Display) UpdateScreen() {
@@ -136,6 +145,7 @@ func (d *Display) UpdateScreen() {
 		d.updateDebugDisplay()
 		d.debugRegText.Draw(d.window, pixel.IM)
 		d.debugInstText.Draw(d.window, pixel.IM)
+		d.debugControllerText.Draw(d.window, pixel.IM)
 	}
 
 	d.window.Update()

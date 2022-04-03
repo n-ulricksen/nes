@@ -37,6 +37,7 @@ const (
 	keyA
 )
 
+// TODO: add 2nd controller keys
 var controllerKeys = map[int]pixelgl.Button{
 	keyRight:  pixelgl.KeyD,
 	keyLeft:   pixelgl.KeyA,
