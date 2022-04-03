@@ -98,6 +98,10 @@ type Ppu struct {
 	// Whether to render foreground pixel in front
 	fgPriority bool
 
+	// Sprite zero detection
+	isSpriteZeroPossible bool
+	isSpriteZeroRendered bool
+
 	display *Display
 
 	paletteRGBA [paletteSize]color.RGBA
@@ -331,8 +335,9 @@ func (p *Ppu) calculateBackgroundPixel() {
 // be rendered on the current cycle/scanline.
 func (p *Ppu) calculateForegroundPixel() {
 	if p.scanline == -1 && p.cycle == 1 {
-		// Clear sprite overflow and sprite shifters
+		// Clear sprite overflow, sprite zero hit, and sprite shifters
 		p.ppuStatus.clearFlag(statusSpriteOverflow)
+		p.ppuStatus.clearFlag(statusSprite0Hit)
 		p.clearSpriteShifters()
 	}
 
@@ -351,39 +356,47 @@ func (p *Ppu) calculateForegroundPixel() {
 
 	// Get the palette, pixel, and priority.
 	if p.ppuMask.getFlag(maskSpriteShow) > 0 {
-		// Find the first visible pixel (x = 0) of highest priority.
-		for i, sprite := range p.spriteScanline {
-			if i >= p.spriteCount {
-				break
-			}
+		if p.ppuMask.getFlag(maskSpriteLeft) > 0 || p.cycle >= 9 {
+			p.isSpriteZeroRendered = false
 
-			if sprite.x == 0 {
-				// Grab the pixel data: the most significant bits from shifters
-				var pixelLo, pixelHi byte
-				if (p.spritePatternShifterLo[i] & 0x80) > 0 {
-					pixelLo = 1
-				}
-				if (p.spritePatternShifterHi[i] & 0x80) > 0 {
-					pixelHi = 1
-				}
-				p.fgPixel = (pixelHi << 1) | pixelLo
-
-				// Pallete data (bottom 2 bits of attribute byte). This is
-				// offset by 4, because the first 4 palettes are used only for
-				// background rendering.
-				p.fgPalette = (sprite.attribute & 0x03) + 0x04
-
-				// Priority (5th bit of attribute byte)
-				if sprite.attribute&(1<<5) == 0 {
-					// 0 bit = foreground priority
-					p.fgPriority = true
-				} else {
-					p.fgPriority = false
-				}
-
-				if p.fgPixel != 0 {
-					// Found a sprite! Render its pixel.
+			// Find the first visible pixel (x = 0) of highest priority.
+			for spriteIdx, sprite := range p.spriteScanline {
+				if spriteIdx >= p.spriteCount {
 					break
+				}
+
+				if sprite.x == 0 {
+					// Grab the pixel data: the most significant bits from shifters
+					var pixelLo, pixelHi byte
+					if (p.spritePatternShifterLo[spriteIdx] & 0x80) > 0 {
+						pixelLo = 1
+					}
+					if (p.spritePatternShifterHi[spriteIdx] & 0x80) > 0 {
+						pixelHi = 1
+					}
+					p.fgPixel = (pixelHi << 1) | pixelLo
+
+					// Pallete data (bottom 2 bits of attribute byte). This is
+					// offset by 4, because the first 4 palettes are used only for
+					// background rendering.
+					p.fgPalette = (sprite.attribute & 0x03) + 0x04
+
+					// Priority (5th bit of attribute byte)
+					if sprite.attribute&(1<<5) == 0 {
+						// 0 bit = foreground priority
+						p.fgPriority = true
+					} else {
+						p.fgPriority = false
+					}
+
+					if p.fgPixel != 0 {
+						// Found a sprite! Render its pixel.
+						if spriteIdx == 0 {
+							p.isSpriteZeroRendered = true
+						}
+
+						break
+					}
 				}
 			}
 		}
@@ -417,6 +430,25 @@ func (p *Ppu) drawPixel(x, y int) {
 		} else {
 			pixel = p.bgPixel
 			palette = p.bgPalette
+		}
+
+		// Detect sprite zero hit
+		if p.isSpriteZeroPossible && p.isSpriteZeroRendered {
+			showBg := p.ppuStatus.getFlag(maskBgShow)
+			showFg := p.ppuStatus.getFlag(maskSpriteShow)
+			if showBg > 0 && showFg > 0 {
+				bgLeft := p.ppuStatus.getFlag(maskBgLeft)
+				fgLeft := p.ppuStatus.getFlag(maskSpriteLeft)
+
+				minCycle, maxCycle := 1, 257
+				if !(bgLeft > 0 || fgLeft > 0) {
+					// Left 8 pixels are disabled
+					minCycle = 9
+				}
+				if p.cycle >= minCycle && p.cycle <= maxCycle {
+					p.ppuStatus.setFlag(statusSprite0Hit)
+				}
+			}
 		}
 	}
 
@@ -781,12 +813,19 @@ func (p *Ppu) getSpriteSize() int {
 func (p *Ppu) spriteEvaluation() {
 	spriteOverflow := false
 
+	p.isSpriteZeroPossible = false
+
 	for oamIdx, entry := range p.oam {
 		diff := p.scanline - int(entry.y)
 		spriteSize := p.getSpriteSize()
 		if diff >= 0 && diff < spriteSize {
 			// Sprite hit!
 			if p.spriteCount < 8 {
+				// Check if sprite zero
+				if oamIdx == 0 {
+					p.isSpriteZeroPossible = true
+				}
+
 				copyOamEntry(p.spriteScanline[p.spriteCount], p.oam[oamIdx])
 				p.spriteCount++
 			} else {
