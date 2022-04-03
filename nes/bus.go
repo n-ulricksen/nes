@@ -55,7 +55,7 @@ const (
 	ctrlMaxAddr uint16 = 0x4017
 
 	// Frames per second
-	fps float64 = 30.0
+	fps float64 = 60
 )
 
 func NewBus(isDebug, isLogging bool) *Bus {
