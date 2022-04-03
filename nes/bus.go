@@ -14,8 +14,8 @@ type Bus struct {
 	Ppu             *Ppu           // Picture processing unit.
 	Ram             [8 * 1024]byte // 8KiB RAM.
 	Cart            *Cartridge     // NES Cartridge.
-	Controller      *Controller    // NES Controller.
-	ControllerState byte           // 8 bit shifter representing each button's state
+	Controller      [2]*Controller // NES Controller.
+	ControllerState [2]byte        // 8 bit shifter representing each button's state
 	Disp            *Display
 
 	ClockCount int
@@ -62,11 +62,16 @@ func NewBus(isDebug, isLogging bool) *Bus {
 	// Create a new CPU. Here we use a 6502.
 	cpu := NewCpu6502(isLogging)
 
+	controllers := [2]*Controller{}
+	for i := range controllers {
+		controllers[i] = NewController()
+	}
+
 	// Attach devices to the bus.
 	bus := &Bus{
 		Cpu:         cpu,
 		Ppu:         NewPpu(),
-		Controller:  NewController(),
+		Controller:  controllers,
 		dmaTransfer: false,
 		dmaNeedSync: true,
 
@@ -102,7 +107,9 @@ func (b *Bus) Run() {
 			b.Clock()
 		}
 
-		b.Controller.updateControllerInput(b.Disp.window)
+		for i := range b.Controller {
+			b.Controller[i].updateControllerInput(b.Disp.window)
+		}
 
 		if b.isDebug {
 			b.DrawDebugPanel()
@@ -126,8 +133,8 @@ func (b *Bus) CpuRead(addr uint16) byte {
 	} else if addr >= cartMinAddr && addr <= cartMaxAddr {
 		data = b.Cart.cpuRead(addr)
 	} else if addr >= ctrlMinAddr && addr <= ctrlMaxAddr {
-		data = b.ControllerState & (1 << 7) >> 7
-		b.ControllerState <<= 1 // shift
+		data = (b.ControllerState[addr&1] & (1 << 7)) >> 7
+		b.ControllerState[addr&1] <<= 1 // shift
 	}
 
 	return data
@@ -146,7 +153,7 @@ func (b *Bus) CpuWrite(addr uint16, data byte) {
 		b.dmaAddr = 0x00
 		b.dmaTransfer = true
 	} else if addr >= ctrlMinAddr && addr <= ctrlMaxAddr {
-		b.ControllerState = b.Controller.GetState()
+		b.ControllerState[addr&1] = b.Controller[addr&1].GetState()
 	}
 }
 
@@ -221,6 +228,8 @@ func (b *Bus) DrawDebugPanel() {
 	b.Disp.debugRegText.Clear()
 	debugStr := b.getCpuDebugString()
 	b.Disp.WriteRegDebugString(debugStr)
+
+	// Keyboard input
 
 	// Disassembly
 	diss := b.getDisassemblyLines()
