@@ -115,7 +115,9 @@ func (b *Bus) Run() {
 			b.DrawDebugPanel()
 		}
 
-		time.Sleep(interval - time.Since(t))
+		since := time.Since(t)
+		toSleep := interval - since
+		time.Sleep(toSleep)
 
 		// Prepare for new frame
 		b.Ppu.frameComplete = false
